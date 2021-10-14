@@ -510,15 +510,19 @@ model1 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_sc
 msummary(model1)
 ```
 
-p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2675 which indicates that this model is not a very good fit.
+p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2614 which indicates that this model is not a very good fit.
 
-Coefficient of `review_scores_rating` is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the logarithm cost for 2 people and 4 nights at Vienna increases by €2.95, which equals roughly 28% more cost. [Calculation: exp(0.0280612)-1 ]
+Coefficient of `review_scores_rating` is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the logarithm cost for 2 people and 4 nights at Vienna increases by €0.04.
 
-Coefficient of `prop_type_simplified` can be interpreted as dummy variables. The baseline category is Entire rental unit. 
-- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for a Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs 47.9% less than a Entire rental unit. [Calculation: exp(-0.6526903)-1 ]
-- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for a Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, a Entire apartment costs 7% more than a Entire rental unit. [Calculation: exp(0.0682845)-1 ]
-- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than a Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 12% less than a Entire rental unit. [Calculation: exp(-0.1368321)-1 ]
+The coefficient of `number_of_reviews` is not significant at the 5% level of significance.
 
+Coefficient of `prop_type_simplified` can be interpreted as dummy variables. The baseline category is Entire rental unit. Thus, the other three dummy variables' represent the deviation in mean log of price of four night stay of the three other property types.
+
+- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for a Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 65.11% less than a Entire rental unit (properties of log-linear regression).
+
+- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for a Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 5.06% more than a Entire rental unit.
+
+- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than a Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 12.59% less than a Entire rental unit.
 
 ## Model 2
 We want to determine if `room_type` is a significant predictor of the cost for 4 nights, given everything else in the model. 
@@ -526,15 +530,7 @@ We want to determine if `room_type` is a significant predictor of the cost for 4
 model2 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating, data = vienna_train)
 msummary(model2)
 ```
-p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2902 which indicates that this model's fit is improved by adding room-type.
-
-Coefficients of `review_scores_rating` and `prop_type_simplified` don't change much.
-
-Coefficient of `room_type` can be interpreted as dummy variables. The baseline category is Hotel room. 
-- Coefficient for Entire home/apt is significant, indicating that the cost for a Entire home/apt is significantly higher than cost for a Hotel room. This makes sense that the coefficient is positive because Entire home/apt probably has kitchens which hotels don't, thus leading to higher costs. To be specific, with other variables same, a Entire home/apt costs 33.5% more than a Hotel room. [Calculation: exp(2.889e-01)-1 ]
-- Coefficient for Private room is significant, indicating that the cost for a Private room is significantly lower than cost for a Hotel room. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room costs 36.5% less than a Hotel room. [Calculation: exp(-4.542e-01)-1 ]
-- Coefficient for Shared room is significant, indicating that the cost for a EShared room is significantly lower than cost for a Hotel room. This makes sense that the coefficient is negative. To be specific, with other variables same, a Shared room costs 57.8% less than a Hotel room. [Calculation: exp(-8.628e-01)-1 ]
-
+Adjusted R squared is 0.2817, which is a marginal improvement on the previous model.
 
 ##To DO
 ## Model 3
@@ -545,7 +541,7 @@ model3 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews
 msummary(model3)
 car::vif(model3)
 ```
-Adjusted R-squared is 0.4021, greatly improved by adding `bathrooms`, `bedrooms`, `beds` and size of the house (`accomodates`) 
+Adjusted R-squared is 0.392, greatly improved by adding `bathrooms`, `bedrooms`, and size of the house (`accomodates`) 
 Coefficients for `bathrooms` and `beds` are not significant, probably due to multicollinearity.
 Using vif() function, we can only see the collinearity between property type and room type, but we know that from correlation matrix, bathrooms and bedrooms are highly correlated, so are beds and accommodates.
 
@@ -554,7 +550,7 @@ model3 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews
              +bedrooms+accommodates, data = vienna_train)
 msummary(model3)
 ```
-By deleting bathrooms and beds, the Adjusted R-squared improved.
+By deleting bathrooms and beds, the Adjusted R-squared improved by a very small margin.
 
 
 ## Model 4
@@ -564,9 +560,7 @@ model4 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews
              +bedrooms+accommodates+host_is_superhost, data = vienna_train)
 msummary(model4)
 ```
-Adjusted R-squared is 0.4099, a little improved by adding `(host_is_superhost`) 
-
-
+Adjusted R-squared is 0.4019, a little improved by adding `(host_is_superhost`) 
 
 ## Model 5
 3. Some hosts allow you to immediately book their listing (`instant_bookable == TRUE`), while a non-trivial proportion don't. After controlling for other variables, is `instant_bookable` a significant predictor of `price_4_nights`?
@@ -575,7 +569,7 @@ model5 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews
              +bedrooms+accommodates+host_is_superhost+instant_bookable, data = vienna_train)
 msummary(model5)
 ```
-
+The adjusted R squared is unchanged from the modified version of Model 4, but we have an insignificant predictor in `instant_bookable` so we are reluctant to use this model going forward.
 
 4. For all cities, there are 3 variables that relate to neighbourhoods: `neighbourhood`, `neighbourhood_cleansed`, and `neighbourhood_group_cleansed`. There are typically more than 20 neighbourhoods in each city, and it wouldn't make sense to include them all in your model. Use your city knowledge, or ask someone with city knowledge, and see whether you can group neighbourhoods together so the majority of listings falls in fewer (5-6 max) geographical areas. You would thus need to create a new categorical variabale `neighbourhood_simplified` and determine whether location is a predictor of `price_4_nights`
 ```{r}
