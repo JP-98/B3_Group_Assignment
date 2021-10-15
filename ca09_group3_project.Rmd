@@ -446,7 +446,7 @@ Note that however, we get unicode characters in three of the neighbourhood clean
 vienna_listings_final <- vienna_listings_final %>%
   mutate(neighbourhood_simplified = case_when(
     neighbourhood_cleansed %in% c("Innere Stadt") ~ neighbourhood_cleansed, 
-    neighbourhood_cleansed %in% c("Wieden", "Landstra§e", "Mariahilf", "Neubau", "Liesing	") ~ "T2",
+    neighbourhood_cleansed %in% c("Wieden", "Landstra§e", "Mariahilf", "Neubau", "Liesing") ~ "T2",
     neighbourhood_cleansed %in% c("Leopoldstadt", "Alsergrund", "Hietzing", "Donaustadt", "Josefstadt") ~ "T3",
     neighbourhood_cleansed %in% c(neighbourhood_sorted[12,1], "Brigittenau", "Favoriten", neighbourhood_sorted[15,1], "Margareten", "Floridsdorf") ~ "T4",
     neighbourhood_cleansed %in% c(neighbourhood_sorted[18,1], "Meidling", "Simmering", "Penzing", "Hernals", "Ottakring") ~ "T5"
@@ -464,6 +464,15 @@ vienna_listings_final <- vienna_listings_final %>%
   select(-neighbourhood_cleansed)
 
 ```
+
+
+```{r}
+# Do boxplot for each neighbourhood simplified
+vienna_listings_final %>% 
+  ggplot(aes(x=price)) %>% 
+  boxplot(neighbourhood_simplified)
+```
+
 
 We can reasonably delete longitude and latitude from dataset now.
 ```{r}
@@ -508,7 +517,10 @@ There are a lot of missing value in `review_scores_rating`, which we are quite c
 
 ```{r}
 vienna_listings_reg <- vienna_listings_reg %>%
-  filter(!is.na(review_scores_rating))
+  filter(!is.na(review_scores_rating)) %>% 
+  filter(number_of_reviews>=10) # filter out properties with less than 10 reviews, as we are predicting price for a property with at least 10 reviews with our optimal model
+
+
 ```
 
 
@@ -549,19 +561,19 @@ autoplot(model1) +
   labs (title = "Model 1 Diagnostic Plots")
 ```
 
-p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2614 which indicates that this model is not a very good fit.
+p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2368 which indicates that this model is not a very good fit.
 
-Coefficient of `review_scores_rating` is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the logarithm cost for 2 people and 4 nights at Vienna increases by €0.04.
+Coefficient of `review_scores_rating` is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the cost for 2 people and 4 nights at Vienna increases by 2.56%.
 
-The coefficient of `number_of_reviews` is not significant at the 5% level of significance.
+The coefficient of `number_of_reviews` is significant at the 5% level of significance.
 
 Coefficient of `prop_type_simplified` can be interpreted as dummy variables. The baseline category is Entire rental unit. Thus, the other three dummy variables' represent the deviation in mean log of price of four night stay of the three other property types.
 
-- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for an Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 65.11% less than an Entire rental unit (properties of log-linear regression).
+- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for an Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 62.4% less than an Entire rental unit (properties of log-linear regression).
 
-- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for an Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 5.06% more than an Entire rental unit.
+- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for an Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 6.02% more than an Entire rental unit.
 
-- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than an Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 12.59% less than an Entire rental unit.
+- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than an Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 17.91% less than an Entire rental unit.
 
 We use the vif() function to check for multicollinearity between the regressors. We get very low VIF values here so it shouldn't be an issue amongst these variables going forward.
 
@@ -575,9 +587,9 @@ autoplot(model2) +
   theme_minimal() + 
   labs (title = "Model 2 Diagnostic Plots")
 ```
-Adjusted R squared is 0.2817, which is a marginal improvement on the previous model at the cost of three extra sources of estimation error, which will increase the variance of our predicted means.
+Adjusted R squared is 0.2542, which is a marginal improvement on the previous model at the cost of three extra sources of estimation error, which will increase the variance of our predicted means.
 
-We also get very high variance inflation factors for property type and room type, understandable. Given that the room type variable only very marginally improved the model's explanatory value, and introduces quite a bit of collinearity amongst the regressors, we decide to drop it going forward.
+We also get very high variance inflation factors for property type and room type, understandable. Given that the room type variable only very marginally improved the model's explanatory value, and introduces quite a bit of collinearity amongst the regressors, we decide to drop either the room_type or property_type variable. However, given that the task at hand is to predict the price of a private room, we are forced to drop the prop_type_simplified variable.
 
 ## Model 3
 We want to test if the number of `bathrooms`, `bedrooms`, `beds`, or size of the house (`accomodates`) are significant predictors of `price_4_nights`. However, we suspect a high degree of multicollinearity betwen these variables, so we make a correlation matrix between these variables to determine if there is a high corelation between the predictors, and which one demonstrates the strongest relationship with the target variable.
@@ -590,18 +602,19 @@ vienna_train %>%
 ```
 There is a high degree of correlation between the predictors, and accommodates demonstrates the strongest relationship with the target variable. This makes sense, seeing as accommodates is determined by the number of beds and bedrooms in a property. Thus, we decide to only add in the Accommodates`variable`into our model. 
 
-Bathrooms demonstrates a weak correlation with accommodates, but also demonstrates a relatively low correlation coefficient with the target variable; thus, we decide not to include it in our model.
+Bathrooms demonstrates a weak correlation with accommodates, and logically you would expect an accommodation with more bathrooms to cost more per person, when we control for the accommodates factor.
+
 
 ```{r}
-model3 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating
-             +accommodates, data = vienna_train)
+model3 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
+             +accommodates+bathrooms, data = vienna_train)
 msummary(model3)
 car::vif(model3)
 autoplot(model3) +
   theme_minimal() + 
   labs (title = "Model 3 Diagnostic Plots")
 ```
-Adjusted R-squared is 0.34, greatly improved by factoring in size of the house (`accomodates`) and bathrooms, both of which are statistically significant (5%).
+Adjusted R-squared is 0.3743, greatly improved by factoring in size of the house (`accomodates`) and bathrooms, both of which are statistically significant (5%).
 
 Note the low multicollinearity amongst the regressors.
 
@@ -609,22 +622,22 @@ Note the low multicollinearity amongst the regressors.
 ## Model 4
 We now want to test if superhosts `(host_is_superhost`) command a pricing premium, after controlling for other variables.
 ```{r}
-model4 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating
-             +accommodates+host_is_superhost, data = vienna_train)
+model4 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
+             +accommodates+bathrooms+host_is_superhost, data = vienna_train)
 msummary(model4)
 car::vif(model4)
 autoplot(model4) +
   theme_minimal() + 
   labs (title = "Model 4 Diagnostic Plots")
 ```
-Adjusted R-squared is 0.35, a barely improved by adding `(host_is_superhost`). However, this regressor is statistically significant, and positive as expected.
+Adjusted R-squared is 0.38, a barely improved by adding `(host_is_superhost`). However, this regressor is statistically significant, and positive as expected. We decide to continue with the variable however as it is extremely significant, and wait until we factor in some additional regressors.
 
 Note that the lm() function automatically discards rows with missing values for the explanatory variables. We were reluctant to remove these rows earlier, as we did not know if these variables would be statistically significant predictors of the target variable,; and thus, we may have discarded valuable data unnecessarily if they were not useful.
 
 ## Model 5
 Some hosts allow you to immediately book their listing (`instant_bookable == TRUE`), while a non-trivial proportion don't. After controlling for other variables, is `instant_bookable` a significant predictor of `price_4_nights`?
 ```{r}
-model5 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating+accommodates+host_is_superhost+instant_bookable, data = vienna_train)
+model5 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost+instant_bookable, data = vienna_train)
 msummary(model5)
 car::vif(model5)
 autoplot(model5) +
@@ -636,14 +649,63 @@ The adjusted R squared is unchanged from Model 4, and we have an insignificant p
 ## Model 6
 We now test the predictive ability of the neighbourhood_simplified variable. 
 ```{r}
-model6 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+host_is_superhost, data = vienna_train)
+model6 <- lm(lnprice_4_nights ~ room_type+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
 msummary(model6)
 car::vif(model6)
 autoplot(model6) +
   theme_minimal() + 
   labs (title = "Model 6 Diagnostic Plots")
 ```
-The introduction of the neighbourhood_simplified variable improves the adjusted R squared greatly to 0.44. Each bucket we computed is a statistically siginificant dummy variable at the 5% level of significance. However, we lose 663 additional observations. We decide that it is worth the loss in data as we still have a sufficient degrees of freedom to avoid overfitting.
+The introduction of the neighbourhood_simplified variable improves the adjusted R squared greatly to 0.48. Each bucket we computed is a statistically siginificant dummy variable at the 5% level of significance. However, we lose 362 additional observations. We decide that it is worth the loss in data as we still have a sufficient degrees of freedom to avoid overfitting.
+
+The inclusion of the neighbourhood variable however results in the "Entire home/apt" category of the `room_type`variable to become statistically insignificant i.e. the mean of the target variable is not statistically significantly different for an entire home/apartment than the baseline room_type in the model (Hotel room) when controlling for other variables. So we should group this category into the baseline category based on this. There must exist a relationship between the neighbourhoods and the room_type variable.
+
+
+```{r}
+# First we need to summarize the specified room_type category into the baseline for training and testing dataset, then we re-factorise them
+
+vienna_train <- vienna_train %>%
+  mutate(room_type = case_when(
+    room_type %in% c("Hotel room", "Entire home/apt") ~ "Entire property", 
+    room_type %in% c("Private room") ~ "Private room",
+    room_type %in% c("Shared room") ~ "Shared room"
+  ))
+
+# Now we need to factorise the new variable
+vienna_train <- vienna_train %>% 
+  mutate(
+     room_types = fct_relevel(room_type,
+                                 "Entire property",
+                                 "Private room",
+                                 "Shared room"))
+
+vienna_test <- vienna_test %>%
+  mutate(room_type = case_when(
+    room_type %in% c("Hotel room", "Entire home/apt") ~ "Entire property", 
+    room_type %in% c("Private room") ~ "Private room",
+    room_type %in% c("Shared room") ~ "Shared room"
+  ))
+
+# Now we need to factorise the new variable
+vienna_test <- vienna_test %>% 
+  mutate(
+     room_types = fct_relevel(room_type,
+                                 "Entire property",
+                                 "Private room",
+                                 "Shared room"))
+```
+
+Now we perform model 6 again with the new room_type grouping.
+
+```{r}
+model6 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
+msummary(model6)
+car::vif(model6)
+autoplot(model6) +
+  theme_minimal() + 
+  labs (title = "Model 6 Diagnostic Plots")
+```
+All of our coefficients on the regressors are now statistically significant. The standard error on the Entire home/apt category coefficient was very large, due to a lack of data.
 
 ## Model 7
 We now want to select which of the review number variables we should use. We look at the correlation matrix between number_of_reviews, reviews_per_month, number_of_reviews_ltm.  
@@ -653,27 +715,28 @@ vienna_train %>%
   ggpairs()+
   labs(title = "Correlation Matrix")
 ```
-The number of reviews over the last twelve months is a more current variable than the number of reviews, and demonstrates a higher correlation with the target variable. We would only like to use one of these variables at most due to the high collinearity, and because we want to minimise out-of-sample variance of our mean forecasts. However, the explanatory values of these variables is pretty poor. We tested Model 6 with the number_of_reviews_ltm variable, but it only increased the adjusted R squared by less than 0.01. When we removed the number_of_reviews variable also, the explanatory value barely changed, so we discard this variable.
+The number of reviews over the last twelve months is a more current variable than the number of reviews, and demonstrates a stronger correlation with the target variable. We would only like to use one of these variables at most due to the high collinearity, and because we want to minimise out-of-sample variance of our mean forecasts. However, the explanatory values of these variables is pretty poor. We tested Model 6 with the number_of_reviews_ltm variable, but it only increased the adjusted R squared by less than 0.01. When we removed the number_of_reviews variable also, the explanatory value barely changed, so we discard this variable. It is surprising that the number of reviews has approximately no relationship with the target variable. 
 
+We decide to drop this class of variables from the model.
 
 We now test the effect of `avalability_30` after controlling for other variables.
 ```{r}
-model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30, data = vienna_train)
+model7 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30, data = vienna_train)
 msummary(model7)
 car::vif(model7)
 autoplot(model7) +
   theme_minimal() + 
   labs (title = "Model 7 Diagnostic Plots")
 ```
-Availability_30 is statistically significant at the 5% level of significance. It also increases our models explanatory value by over 0.04, which is a welcome boost. Multicollinearity is quite low in this model aswell which gives us confidence in the independence of our explanatory variables.
+Availability_30 is statistically significant at the 5% level of significance. It also increases our model's explanatory value by over 0.04, which is a welcome boost. Multicollinearity is relatively low in this model as well which gives us confidence in the independence of our explanatory variables.
 
 If availability_30 increases by 1, we would expect, based on the model, that price for two people for four nights would increase by c. 1% on average. This variable is statistically significant at the 5% level of significance.
 
-After running the specified regressions, we must look at the remaining variables we have not used so farto potentially optimise our models explanatory value further.
+After running the specified regressions, we must look at the remaining variables we have not used so far to potentially optimise our models explanatory value further.
 
 ```{r,render=lemon_print}
 vienna_train %>% 
-  select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price))
+  select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price,room_types))
 
 ```
 
@@ -685,9 +748,9 @@ Relevant variables not tested yet:
  - host_response_rate (too many missing values)
 
 ## Model 8
-We decide to test the host_identity_verified Boolean variable, as we would expect that people could potentially pay a premium for the security of the booking. However, the host may not demand a premium for being verified, since it is strictly the seller which determins market price here.
+We decide to test the host_identity_verified Boolean variable, as we would expect that people could potentially pay a premium for the security of the booking. However, the host may not demand a premium for being verified, since it is strictly the seller which determines market price here.
 ```{r}
-model8 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
+model8 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
 msummary(model8)
 car::vif(model8)
 autoplot(model8) +
@@ -697,7 +760,7 @@ autoplot(model8) +
 The host identity verification variable is not statistically significant at the 5% level of significance, so we discard it. We can say so far that Model 7 is the best in terms of adjusted r squared.
 
 ```{r,render=lemon_print}
-models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7, 
+models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7,model8,
                  statistics = c('#observations' = 'nobs', 
                                 'R squared' = 'r.squared', 
                                 'Adj. R Squared' = 'adj.r.squared', 
@@ -729,31 +792,6 @@ RMSE_compare = data.frame(RMSE1, RMSE2, RMSE3, RMSE4, RMSE5, RMSE6, RMSE7, RMSE8
 RMSE_compare
 ```
 
-# Instructions left
-
-> In all cases, please think about the message your plot is conveying. Don’t just say "This is my X-axis, this is my Y-axis", but rather what’s the **so what** of the plot. Tell some sort of story and speculate about the differences in the patterns in no more than a paragraph.
-
-## Data wrangling
-
-Once you load the data, it's always a good idea to use `glimpse` to see what kind of variables you have and what data type (`chr`, `num`, `logical`, `date`, etc) they are. 
-
-Notice that some of the price data (`price`) is given as a character string, e.g., "$176.00"
-
-Since `price` is a quantitative variable, we need to make sure it is stored as numeric data `num` in the dataframe. To do so, we will first use `readr::parse_number()` which drops any non-numeric characters before or after the first number
-
-
-Recommendations From TA
-Get rid of extreme positive outliers, get rid of negative & extremely small values < 1
-TAKE LN(Price)  
-NA omitting after filtering/selecting variables we actually need
-Economist package for graphs
-
-Use `typeof(listing$price)` to confirm that `price` is now stored as a number.
-
-        
-
-
-
 
 ## Diagnostics, collinearity, summary tables
 
@@ -762,7 +800,7 @@ As you keep building your models, it makes sense to:
 1. Check the residuals, using `autoplot(model_x)`
 2. As you start building models with more explanatory variables, make sure you use `car::vif(model_x)`` to calculate the **Variance Inflation Factor (VIF)** for your predictors and determine whether you have colinear variables. A general guideline is that a VIF larger than 5 or 10 is large, and your model may suffer from collinearity. Remove the variable in question and run your model again without it.
 3. Create a summary table, using `huxtable` (https://mfa2022.netlify.app/example/modelling_side_by_side_tables/) that shows which models you worked on, which predictors are significant, the adjusted $R^2$, and the Residual Standard Error.
-4. Finally, you must use the best model you came up with for prediction. Suppose you are planning to visit the city you have been assigned to over reading week, and you want to stay in an Airbnb. Find Airbnb's in your destination city that are apartments with a private room, have at least 10 reviews, and an average rating of at least 90. Use your best model to predict the total cost to stay at this Airbnb for 4 nights. Include the appropriate 95% interval with your prediction. Report the point prediction and interval in terms of `price_4_nights`. 
+4. Finally, you must use the best model you came up with for prediction. Suppose you are planning to visit the city you have been assigned to over reading week, and you want to stay in an Airbnb. Find Airbnb's in your destination city that are a private room, have at least 10 reviews, and an average rating of at least 90 (4.5/5.0). Use your best model to predict the total cost to stay at this Airbnb for 4 nights. Include the appropriate 95% interval with your prediction. Report the point prediction and interval in terms of `price_4_nights`. 
   - if you used a log(price_4_nights) model, make sure you anti-log to convert the value in $. You can read more about [hot to interpret a regression model when some variables are log transformed here](https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-do-i-interpret-a-regression-model-when-some-variables-are-log-transformed/)
 
 
