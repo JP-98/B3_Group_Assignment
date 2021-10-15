@@ -541,8 +541,12 @@ We can see there are many variables with have a high correlation with each other
 Fit a regression model called `model1` with the following explanatory variables: `prop_type_simplified`, `number_of_reviews`, and `review_scores_rating`. 
 ```{r}
 model1 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating, data = vienna_train)
+par(mfrow=c(2,2)) 
 msummary(model1)
 car::vif(model1)
+autoplot(model1) +
+  theme_minimal() + 
+  labs (title = "Model 1 Diagnostic Plots")
 ```
 
 p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2614 which indicates that this model is not a very good fit.
@@ -567,6 +571,9 @@ We want to determine if `room_type` is a significant predictor of the cost for 4
 model2 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating, data = vienna_train)
 msummary(model2)
 car::vif(model2)
+autoplot(model2) +
+  theme_minimal() + 
+  labs (title = "Model 2 Diagnostic Plots")
 ```
 Adjusted R squared is 0.2817, which is a marginal improvement on the previous model at the cost of three extra sources of estimation error, which will increase the variance of our predicted means.
 
@@ -590,6 +597,9 @@ model3 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_sc
              +accommodates, data = vienna_train)
 msummary(model3)
 car::vif(model3)
+autoplot(model3) +
+  theme_minimal() + 
+  labs (title = "Model 3 Diagnostic Plots")
 ```
 Adjusted R-squared is 0.34, greatly improved by factoring in size of the house (`accomodates`) and bathrooms, both of which are statistically significant (5%).
 
@@ -603,6 +613,9 @@ model4 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_sc
              +accommodates+host_is_superhost, data = vienna_train)
 msummary(model4)
 car::vif(model4)
+autoplot(model4) +
+  theme_minimal() + 
+  labs (title = "Model 4 Diagnostic Plots")
 ```
 Adjusted R-squared is 0.35, a barely improved by adding `(host_is_superhost`). However, this regressor is statistically significant, and positive as expected.
 
@@ -614,6 +627,9 @@ Some hosts allow you to immediately book their listing (`instant_bookable == TRU
 model5 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating+accommodates+host_is_superhost+instant_bookable, data = vienna_train)
 msummary(model5)
 car::vif(model5)
+autoplot(model5) +
+  theme_minimal() + 
+  labs (title = "Model 5 Diagnostic Plots")
 ```
 The adjusted R squared is unchanged from Model 4, and we have an insignificant predictor in `instant_bookable` so we discard this variable going forward.
 
@@ -623,6 +639,9 @@ We now test the predictive ability of the neighbourhood_simplified variable.
 model6 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+host_is_superhost, data = vienna_train)
 msummary(model6)
 car::vif(model6)
+autoplot(model6) +
+  theme_minimal() + 
+  labs (title = "Model 6 Diagnostic Plots")
 ```
 The introduction of the neighbourhood_simplified variable improves the adjusted R squared greatly to 0.44. Each bucket we computed is a statistically siginificant dummy variable at the 5% level of significance. However, we lose 663 additional observations. We decide that it is worth the loss in data as we still have a sufficient degrees of freedom to avoid overfitting.
 
@@ -632,16 +651,19 @@ We now want to select which of the review number variables we should use. We loo
 vienna_train %>% 
   select(lnprice_4_nights, number_of_reviews, reviews_per_month, number_of_reviews_ltm) %>% 
   ggpairs()+
-  labs(title = "Correlation Matrix") 
+  labs(title = "Correlation Matrix")
 ```
 The number of reviews over the last twelve months is a more current variable than the number of reviews, and demonstrates a higher correlation with the target variable. We would only like to use one of these variables at most due to the high collinearity, and because we want to minimise out-of-sample variance of our mean forecasts. However, the explanatory values of these variables is pretty poor. We tested Model 6 with the number_of_reviews_ltm variable, but it only increased the adjusted R squared by less than 0.01. When we removed the number_of_reviews variable also, the explanatory value barely changed, so we discard this variable.
 
 
 We now test the effect of `avalability_30` after controlling for other variables.
 ```{r}
-model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30+bedrooms, data = vienna_train)
+model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30, data = vienna_train)
 msummary(model7)
 car::vif(model7)
+autoplot(model7) +
+  theme_minimal() + 
+  labs (title = "Model 7 Diagnostic Plots")
 ```
 Availability_30 is statistically significant at the 5% level of significance. It also increases our models explanatory value by over 0.04, which is a welcome boost. Multicollinearity is quite low in this model aswell which gives us confidence in the independence of our explanatory variables.
 
@@ -668,6 +690,9 @@ We decide to test the host_identity_verified Boolean variable, as we would expec
 model8 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
 msummary(model8)
 car::vif(model8)
+autoplot(model8) +
+  theme_minimal() + 
+  labs (title = "Model 8 Diagnostic Plots")
 ```
 The host identity verification variable is not statistically significant at the 5% level of significance, so we discard it. We can say so far that Model 7 is the best in terms of adjusted r squared.
 
