@@ -25,7 +25,7 @@ Sys.setenv(LANG = "en_US.UTF-8")
 ```
 
 
-```{r load-libraries, echo=FALSE}
+```{r load-libraries, echo=FALSE, warning=FALSE,message=FALSE}
 
 library(tidyverse) # the usual stuff: dplyr, readr, and other goodies
 library(lubridate) # to handle dates
@@ -46,7 +46,8 @@ library(vroom)
 library(geosphere)
 library(ggrepel)
 library(rsample)
-library(Unicode)
+library(lemon)
+knit_print.data.frame <- lemon_print
 ```
 
 # Introduction #
@@ -426,7 +427,7 @@ Neighbourhoods located less than 6 km to city center offer listings for price in
 
 Interestingly, listings located more than 9km away have higher price for 60-70. There appears to be no certain pattern but we will investigate further later.
 
-```{r}
+```{r,render=lemon_print}
 # Grouping by neighbourhood_cleansed
 neighbourhood_sorted = vienna_listings_final %>% 
  group_by(neighbourhood_cleansed) %>% 
@@ -638,7 +639,7 @@ The number of reviews over the last twelve months is a more current variable tha
 
 We now test the effect of `avalability_30` after controlling for other variables.
 ```{r}
-model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30, data = vienna_train)
+model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30+bedrooms, data = vienna_train)
 msummary(model7)
 car::vif(model7)
 ```
@@ -648,7 +649,7 @@ If availability_30 increases by 1, we would expect, based on the model, that pri
 
 After running the specified regressions, we must look at the remaining variables we have not used so farto potentially optimise our models explanatory value further.
 
-```{r}
+```{r,render=lemon_print}
 vienna_train %>% 
   select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price))
 
@@ -669,6 +670,39 @@ msummary(model8)
 car::vif(model8)
 ```
 The host identity verification variable is not statistically significant at the 5% level of significance, so we discard it. We can say so far that Model 7 is the best in terms of adjusted r squared.
+
+```{r,render=lemon_print}
+models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7, 
+                 statistics = c('#observations' = 'nobs', 
+                                'R squared' = 'r.squared', 
+                                'Adj. R Squared' = 'adj.r.squared', 
+                                'Residual SE' = 'sigma'), 
+                 bold_signif = 0.05, 
+                 stars = NULL
+) %>% 
+  set_caption('Comparison of models')
+models_compare
+
+# Get list of adjusted R squared values
+ar2_comparison = data.frame(summary(model1)$adj.r.squared,summary(model2)$adj.r.squared,summary(model3)$adj.r.squared,summary(model4)$adj.r.squared,summary(model5)$adj.r.squared,summary(model6)$adj.r.squared,summary(model7)$adj.r.squared,summary(model8)$adj.r.squared)
+```
+
+
+```{r,render=lemon_print}
+# Get out of sample RMSE
+RMSE1 = 100*sd((predict(model1, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE2 = 100*sd((predict(model2, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE3 = 100*sd((predict(model3, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE4 = 100*sd((predict(model4, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE5 = 100*sd((predict(model5, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE6 = 100*sd((predict(model6, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE7 = 100*sd((predict(model7, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE8 = 100*sd((predict(model8, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+
+RMSE_compare = data.frame(RMSE1, RMSE2, RMSE3, RMSE4, RMSE5, RMSE6, RMSE7, RMSE8)
+
+RMSE_compare
+```
 
 # Instructions left
 
