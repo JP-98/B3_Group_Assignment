@@ -18,6 +18,10 @@ output:
 options(knitr.table.format = "html") 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, 
   comment = NA, dpi = 300)
+options(warn=-1)
+knitr::opts_chunk$set(message = FALSE)
+Sys.setlocale("LC_MESSAGES", 'en_GB.UTF-8')
+Sys.setenv(LANG = "en_US.UTF-8")
 ```
 
 
@@ -42,6 +46,7 @@ library(vroom)
 library(geosphere)
 library(ggrepel)
 library(rsample)
+library(Unicode)
 ```
 
 # Introduction #
@@ -50,7 +55,7 @@ This coursework focuses on applying a multivariate linear regression model to pr
 
 
 ```{r load_data, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
-# use cache=TRUE so you dont donwload the data everytime you knit
+# use cache=TRUE so you dont download the data everytime you knit
 vienna_listings <- vroom("http://data.insideairbnb.com/austria/vienna/vienna/2021-09-12/data/listings.csv.gz") %>%
   clean_names()
 ```
@@ -59,6 +64,10 @@ vienna_listings <- vroom("http://data.insideairbnb.com/austria/vienna/vienna/202
 # Price is a character, parse to integer
 vienna_listings <- vienna_listings %>% 
   mutate(price = parse_number(price))
+```
+```{r}
+# In case of duplicate rows
+unique_listings = unique(listings[,])
 ```
 
 
@@ -220,13 +229,12 @@ vienna_listings_final <- vienna_listings_cleaned
 
 
 ### Non-numerical to numerical: Bathrooms, host_response_rate, host_acceptance_rate
-```{r}
+```{r,warning = FALSE,message = FALSE}
 vienna_listings_final <- vienna_listings_final%>%
   mutate(bathrooms = parse_number(bathrooms_text),
          host_response_rate = parse_number(host_response_rate),
          host_acceptance_rate = parse_number(host_acceptance_rate))%>%
   select(-bathrooms_text)
-
 ```
 
 ### Summary of Findings: 
@@ -411,12 +419,50 @@ dist_neighbourhood %>%
         axis.title.y = element_text(size=12,face='bold'),
         ) +
   labs(title = "Neighbourhood median price against median distance from city center", 
-       x="Median distance from city center",y="Median Price") 
+       x="Median distance from city center",y="Median Price")
 ```
 Innere Stadt is the neighbourhood located right at city center (587.45m in average), thus reaching high average price.
 Neighbourhoods located less than 6 km to city center offer listings for price in range 55 to 65, with price decreasing when distance increase.
-Interestingly, listings located more than 9km away have higher price for 60-70.
 
+Interestingly, listings located more than 9km away have higher price for 60-70. There appears to be no certain pattern but we will investigate further later.
+
+```{r}
+# Grouping by neighbourhood_cleansed
+neighbourhood_sorted = vienna_listings_final %>% 
+ group_by(neighbourhood_cleansed) %>% 
+  summarise(mean_price = mean(price)) %>% 
+  arrange(-mean_price)
+
+neighbourhood_sorted
+```
+
+We would like to divide our neighbourhoods into five different areas, as for the 23 we currently have, estimation error would be too high out of sample, potentially giving our out-of-sample predictions massive standard errors. We decide to group the areas by similar mean prices. Since Innere Stadt is such an outlier in terms of price, we divide the rest of the areas into four groups (5,6,6,5). 
+
+Note that however, we get unicode characters in three of the neighbourhood cleansed variables. However, we can avoid any hassle and simply call the variable from the table of neighbourhood_cleansed mean prices. We will later assess our groupings to see if they are statistically significant (i.e. if the difference in means is statistically significant) in he regression model.
+
+```{r}
+# First we need to summarize the other values in the Category "Others"
+vienna_listings_final <- vienna_listings_final %>%
+  mutate(neighbourhood_simplified = case_when(
+    neighbourhood_cleansed %in% c("Innere Stadt") ~ neighbourhood_cleansed, 
+    neighbourhood_cleansed %in% c("Wieden", "Landstra§e", "Mariahilf", "Neubau", "Liesing	") ~ "T2",
+    neighbourhood_cleansed %in% c("Leopoldstadt", "Alsergrund", "Hietzing", "Donaustadt", "Josefstadt") ~ "T3",
+    neighbourhood_cleansed %in% c(neighbourhood_sorted[12,1], "Brigittenau", "Favoriten", neighbourhood_sorted[15,1], "Margareten", "Floridsdorf") ~ "T4",
+    neighbourhood_cleansed %in% c(neighbourhood_sorted[18,1], "Meidling", "Simmering", "Penzing", "Hernals", "Ottakring") ~ "T5"
+  ))
+
+# Now we need to factorise the new variable
+vienna_listings_final <- vienna_listings_final %>% 
+  mutate(
+     neighbourhood_simplified = fct_relevel(neighbourhood_simplified,
+                                 "Innere Stadt",
+                                 "T2",
+                                 "T3",
+                                 "T4",
+                                 "T5")) %>%
+  select(-neighbourhood_cleansed)
+
+```
 
 We can reasonably delete longitude and latitude from dataset now.
 ```{r}
@@ -425,6 +471,8 @@ vienna_listings_final <- vienna_listings_final %>%
 ```
 
 # Regression Analysis
+
+Model selection is a structured process. We first compute the target variable, which is the price for two people to stay for four nights. For the same reasons as earlier, we take the natural logarithm of this variable to normalise it. We then assess the correlation matrix of our numerical explanatory variables in order to determine which variables have the strongest relationships with the target variable, and to highlight variables with high collinearity so as to avoid multicollinearity issues amongst the regressors. We then iterate through a number of models in order to determine if the increase in adjusted r squared is worth the increase in exposure to estimation error. When building regression models with a large number of potential independent variables, we must be cautious of the tradeoff between in-sample bias and out of sample variance of predictions. To optimise our model based on this tradeoff, we can compare the adjusted R squared against the out of sample RMSE (from the testing data). We also perform other model diagnostics such as analysis of the residuals, in order to ensure that they are approximately normal and homoskedastic with a mean of zero.
 
 ## Target variable
 
@@ -454,7 +502,9 @@ We should use `log(price_4_nights)` for the regression model because it is more 
 
 ## Deal with missing values
 
-There are a lot of missing value in `review_scores_rating`. We have 6878 observations left out of 8844 if we remove all the missing values in `review_scores_rating`
+There are a lot of missing value in `review_scores_rating`, which we are quite confident will be a significant predictor. We have 6878 observations left out of 8844 if we remove all the missing values in `review_scores_rating`. We decide that it makes sense to remove these "unrated" properties as data on reviewed properties will on average be more reliable, and we still have sufficient datapoints to formulate a model.
+
+
 ```{r}
 vienna_listings_reg <- vienna_listings_reg %>%
   filter(!is.na(review_scores_rating))
@@ -482,23 +532,6 @@ vienna_train %>%
   select(-price)%>%
   ggpairs()
 ```
-
-## Simplified version
-
-The correlation matrix that includes all numeric variables is not readable, so we select some variables that seem to have higher correlation with lnprice_4_nights. 
-(Criteria: Absolute value >=0.2)
-
-We decide not to continue with the distance from center variable, due to its low correlation with ln_price_4_nights, and due to the fact that two of the most expensive areas in Vienna are quite far from the center. We also confirmed this with a local citizen of Vienna!
-
-```{r, correlation, fig.width=15, fig.height=12}
-# Scatterplot/Correlation matrix for numerical variables
-vienna_train %>% 
-  select(lnprice, bedrooms, accommodates, beds, availability_30, availability_365) %>% 
-  ggpairs()+
-  labs(title = "Correlation Matrix") 
-```
-Note that beds and accommodates are very highly correlated as expected. This would post a multicollinearity issue in a regression model, so we should avoid including both of these in a regression. The same applies to availability 30 and 365.
-
 ## Summary of correlations between variables:
 
 We can see there are many variables with have a high correlation with each other, eg. beds and accommodates. This means we need to consider multicollinearity in regression. However, Some scatterplots cannot support a linear relationship between variables, eg. price and total listings of the host. There could be some correlations  conditional on the value of a categorical variable, eg. the correlation between price and bedrooms could be conditional on property type or room type, since whether the listing is entire or a private room for rental might influence the number of bedrooms.
@@ -508,6 +541,7 @@ Fit a regression model called `model1` with the following explanatory variables:
 ```{r}
 model1 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating, data = vienna_train)
 msummary(model1)
+car::vif(model1)
 ```
 
 p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2614 which indicates that this model is not a very good fit.
@@ -518,79 +552,125 @@ The coefficient of `number_of_reviews` is not significant at the 5% level of sig
 
 Coefficient of `prop_type_simplified` can be interpreted as dummy variables. The baseline category is Entire rental unit. Thus, the other three dummy variables' represent the deviation in mean log of price of four night stay of the three other property types.
 
-- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for a Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 65.11% less than a Entire rental unit (properties of log-linear regression).
+- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for an Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 65.11% less than an Entire rental unit (properties of log-linear regression).
 
-- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for a Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 5.06% more than a Entire rental unit.
+- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for an Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 5.06% more than an Entire rental unit.
 
-- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than a Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 12.59% less than a Entire rental unit.
+- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than an Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 12.59% less than an Entire rental unit.
+
+We use the vif() function to check for multicollinearity between the regressors. We get very low VIF values here so it shouldn't be an issue amongst these variables going forward.
 
 ## Model 2
 We want to determine if `room_type` is a significant predictor of the cost for 4 nights, given everything else in the model. 
 ```{r}
 model2 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating, data = vienna_train)
 msummary(model2)
+car::vif(model2)
 ```
-Adjusted R squared is 0.2817, which is a marginal improvement on the previous model.
+Adjusted R squared is 0.2817, which is a marginal improvement on the previous model at the cost of three extra sources of estimation error, which will increase the variance of our predicted means.
 
-##To DO
+We also get very high variance inflation factors for property type and room type, understandable. Given that the room type variable only very marginally improved the model's explanatory value, and introduces quite a bit of collinearity amongst the regressors, we decide to drop it going forward.
+
 ## Model 3
-1. Are the number of `bathrooms`, `bedrooms`, `beds`, or size of the house (`accomodates`) significant predictors of `price_4_nights`? Or might these be co-linear variables?
+We want to test if the number of `bathrooms`, `bedrooms`, `beds`, or size of the house (`accomodates`) are significant predictors of `price_4_nights`. However, we suspect a high degree of multicollinearity betwen these variables, so we make a correlation matrix between these variables to determine if there is a high corelation between the predictors, and which one demonstrates the strongest relationship with the target variable.
+
 ```{r}
-model3 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating
-             +bathrooms+bedrooms+beds+accommodates, data = vienna_train)
+vienna_train %>% 
+  select(lnprice_4_nights, bathrooms, bedrooms, accommodates, beds) %>% 
+  ggpairs()+
+  labs(title = "Correlation Matrix") 
+```
+There is a high degree of correlation between the predictors, and accommodates demonstrates the strongest relationship with the target variable. This makes sense, seeing as accommodates is determined by the number of beds and bedrooms in a property. Thus, we decide to only add in the Accommodates`variable`into our model. 
+
+Bathrooms demonstrates a weak correlation with accommodates, but also demonstrates a relatively low correlation coefficient with the target variable; thus, we decide not to include it in our model.
+
+```{r}
+model3 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating
+             +accommodates, data = vienna_train)
 msummary(model3)
 car::vif(model3)
 ```
-Adjusted R-squared is 0.392, greatly improved by adding `bathrooms`, `bedrooms`, and size of the house (`accomodates`) 
-Coefficients for `bathrooms` and `beds` are not significant, probably due to multicollinearity.
-Using vif() function, we can only see the collinearity between property type and room type, but we know that from correlation matrix, bathrooms and bedrooms are highly correlated, so are beds and accommodates.
+Adjusted R-squared is 0.34, greatly improved by factoring in size of the house (`accomodates`) and bathrooms, both of which are statistically significant (5%).
 
-```{r}
-model3 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating
-             +bedrooms+accommodates, data = vienna_train)
-msummary(model3)
-```
-By deleting bathrooms and beds, the Adjusted R-squared improved by a very small margin.
+Note the low multicollinearity amongst the regressors.
 
 
 ## Model 4
-2. Do superhosts `(host_is_superhost`) command a pricing premium, after controlling for other variables?
+We now want to test if superhosts `(host_is_superhost`) command a pricing premium, after controlling for other variables.
 ```{r}
-model4 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating
-             +bedrooms+accommodates+host_is_superhost, data = vienna_train)
+model4 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating
+             +accommodates+host_is_superhost, data = vienna_train)
 msummary(model4)
+car::vif(model4)
 ```
-Adjusted R-squared is 0.4019, a little improved by adding `(host_is_superhost`) 
+Adjusted R-squared is 0.35, a barely improved by adding `(host_is_superhost`). However, this regressor is statistically significant, and positive as expected.
+
+Note that the lm() function automatically discards rows with missing values for the explanatory variables. We were reluctant to remove these rows earlier, as we did not know if these variables would be statistically significant predictors of the target variable,; and thus, we may have discarded valuable data unnecessarily if they were not useful.
 
 ## Model 5
-3. Some hosts allow you to immediately book their listing (`instant_bookable == TRUE`), while a non-trivial proportion don't. After controlling for other variables, is `instant_bookable` a significant predictor of `price_4_nights`?
+Some hosts allow you to immediately book their listing (`instant_bookable == TRUE`), while a non-trivial proportion don't. After controlling for other variables, is `instant_bookable` a significant predictor of `price_4_nights`?
 ```{r}
-model5 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating
-             +bedrooms+accommodates+host_is_superhost+instant_bookable, data = vienna_train)
+model5 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating+accommodates+host_is_superhost+instant_bookable, data = vienna_train)
 msummary(model5)
+car::vif(model5)
 ```
-The adjusted R squared is unchanged from the modified version of Model 4, but we have an insignificant predictor in `instant_bookable` so we are reluctant to use this model going forward.
+The adjusted R squared is unchanged from Model 4, and we have an insignificant predictor in `instant_bookable` so we discard this variable going forward.
 
-4. For all cities, there are 3 variables that relate to neighbourhoods: `neighbourhood`, `neighbourhood_cleansed`, and `neighbourhood_group_cleansed`. There are typically more than 20 neighbourhoods in each city, and it wouldn't make sense to include them all in your model. Use your city knowledge, or ask someone with city knowledge, and see whether you can group neighbourhoods together so the majority of listings falls in fewer (5-6 max) geographical areas. You would thus need to create a new categorical variabale `neighbourhood_simplified` and determine whether location is a predictor of `price_4_nights`
+## Model 6
+We now test the predictive ability of the neighbourhood_simplified variable. 
 ```{r}
-model6 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating
-             +bedrooms+accommodates+host_is_superhost, data = vienna_train)
+model6 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+host_is_superhost, data = vienna_train)
 msummary(model6)
+car::vif(model6)
 ```
+The introduction of the neighbourhood_simplified variable improves the adjusted R squared greatly to 0.44. Each bucket we computed is a statistically siginificant dummy variable at the 5% level of significance. However, we lose 663 additional observations. We decide that it is worth the loss in data as we still have a sufficient degrees of freedom to avoid overfitting.
 
-
-5. What is the effect of `avalability_30` or `reviews_per_month` on `price_4_nights`, after we control for other variables?
+## Model 7
+We now want to select which of the review number variables we should use. We look at the correlation matrix between number_of_reviews, reviews_per_month, number_of_reviews_ltm.  
 ```{r}
+vienna_train %>% 
+  select(lnprice_4_nights, number_of_reviews, reviews_per_month, number_of_reviews_ltm) %>% 
+  ggpairs()+
+  labs(title = "Correlation Matrix") 
+```
+The number of reviews over the last twelve months is a more current variable than the number of reviews, and demonstrates a higher correlation with the target variable. We would only like to use one of these variables at most due to the high collinearity, and because we want to minimise out-of-sample variance of our mean forecasts. However, the explanatory values of these variables is pretty poor. We tested Model 6 with the number_of_reviews_ltm variable, but it only increased the adjusted R squared by less than 0.01. When we removed the number_of_reviews variable also, the explanatory value barely changed, so we discard this variable.
+
+
+We now test the effect of `avalability_30` after controlling for other variables.
+```{r}
+model7 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30, data = vienna_train)
+msummary(model7)
+car::vif(model7)
+```
+Availability_30 is statistically significant at the 5% level of significance. It also increases our models explanatory value by over 0.04, which is a welcome boost. Multicollinearity is quite low in this model aswell which gives us confidence in the independence of our explanatory variables.
+
+If availability_30 increases by 1, we would expect, based on the model, that price for two people for four nights would increase by c. 1% on average. This variable is statistically significant at the 5% level of significance.
+
+After running the specified regressions, we must look at the remaining variables we have not used so farto potentially optimise our models explanatory value further.
+
+```{r}
+vienna_train %>% 
+  select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price))
+
 ```
 
+ 
+Relevant variables not tested yet:
+ - host_identity_verified
+ - host_total_listings_count
+ - host_acceptance_rate (too many missing values)
+ - host_response_rate (too many missing values)
 
-
-
-
+## Model 8
+We decide to test the host_identity_verified Boolean variable, as we would expect that people could potentially pay a premium for the security of the booking. However, the host may not demand a premium for being verified, since it is strictly the seller which determins market price here.
+```{r}
+model8 <- lm(lnprice_4_nights ~ prop_type_simplified+neighbourhood_simplified+review_scores_rating+accommodates+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
+msummary(model8)
+car::vif(model8)
+```
+The host identity verification variable is not statistically significant at the 5% level of significance, so we discard it. We can say so far that Model 7 is the best in terms of adjusted r squared.
 
 # Instructions left
-
-At this stage, you may also find you want to use `filter`, `mutate`, `arrange`, `select`, or `count`. Let your questions lead you! 
 
 > In all cases, please think about the message your plot is conveying. Don’t just say "This is my X-axis, this is my Y-axis", but rather what’s the **so what** of the plot. Tell some sort of story and speculate about the differences in the patterns in no more than a paragraph.
 
