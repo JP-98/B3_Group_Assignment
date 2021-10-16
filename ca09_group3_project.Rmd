@@ -468,8 +468,8 @@ vienna_listings_final <- vienna_listings_final %>%
 ```{r}
 # Do boxplot for each neighbourhood simplified
 #vienna_listings_final %>% 
-  ggplot(aes(x=price)) %>% 
-  boxplot(neighbourhood_simplified)
+  #ggplot(aes(x=price)) %>% 
+  #boxplot(neighbourhood_simplified)
 ```
 
 
@@ -517,7 +517,7 @@ There are a lot of missing value in `review_scores_rating`, which we are quite c
 ```{r}
 vienna_listings_reg <- vienna_listings_reg %>%
   filter(!is.na(review_scores_rating)) %>% 
-  filter(number_of_reviews>=10) # filter out properties with less than 10 reviews, as we are predicting price for a property with at least 10 reviews with our optimal model
+  filter(number_of_reviews>=10) # filter out properties with less than 10 reviews, as we are predicting price for a property with at least 10 reviews with our optimal model, and newer/untested properties with too few reviews may give unreliable price data
 
 
 ```
@@ -800,22 +800,22 @@ Its residuals are approximately normal as they appear to simulate a white noise 
 Finally, we use our optimised model for predictions.
 
 ## Prediction 1
-We first predict the price for  a private room, have at least 10 reviews, and an average rating of at least 90 (4.5/5.0). Use your best model to predict the total cost to stay at this Airbnb for 4 nights. Include the appropriate 95% interval with your prediction. Report the point prediction and interval in terms of `price_4_nights`. 
-```{r}
+We first predict the price for a private room, with at least 10 reviews, and an average rating of at least 90 (4.5/5.0). We also assume that the property accommodates 2 people, has one bathroom, and has the average availability_30 in the entire cleaned dataset. We predict for each of the five neighbourhood buckets from most to least expensive We use the model to predict the total cost to stay at this Airbnb for 4 nights.  
+```{r, render=lemon_print}
 imaginary_stay1 <- data_frame(room_types="Private room",
-                              neighbourhood_simplified = c("T2"), # vary at will
+                              neighbourhood_simplified = c("Innere Stadt","T2", "T3", "T4", "T5"), # vary at will
                               review_scores_rating = 4.5:5,
                               accommodates=2,
                               bathrooms=1,
                               host_is_superhost=TRUE,
-                              availability_30=1:30)
+                              availability_30=mean(vienna_listings_reg$availability_30))
 
-exp(predict.lm(model7, imaginary_stay1, interval = "prediction"))
+pred1=data.frame(exp(predict.lm(model7, imaginary_stay1,  interval = "confidence")), row.names = c("Innere Stadt","T2", "T3", "T4", "T5"))
+pred1
 ```
+This demonstrates the significant difference between the neighbourhoods, with Innere Stadt the obvious positive outlier in terms of price. This table gives the user the location/price trade-off of staying in a nicer or potentially better located area, with the given assumptions above.
 
 
-
-  - if you used a log(price_4_nights) model, make sure you anti-log to convert the value in $. You can read more about [hot to interpret a regression model when some variables are log transformed here](https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-do-i-interpret-a-regression-model-when-some-variables-are-log-transformed/)
 
 
 # Deliverables
