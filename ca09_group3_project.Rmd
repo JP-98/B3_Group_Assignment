@@ -47,6 +47,7 @@ library(geosphere)
 library(ggrepel)
 library(rsample)
 library(lemon)
+library(ggthemes)
 knit_print.data.frame <- lemon_print
 ```
 
@@ -136,13 +137,13 @@ Conduct a thorough EDA. Recall that an EDA involves three things:
 ### Glimpse
 ```{r}
 # Use Glimpse from the Dplyr package to get an initial look at the raw data
-dplyr::glimpse(vienna_listings)
+kable(dplyr::glimpse(vienna_listings))
 ```
 
 ### Skim data
 ```{r}
 # Generate summary statistics with mosaic and skimr packages
-skimr::skim(vienna_listings)
+kable(skimr::skim(vienna_listings))
 ```
 
 
@@ -182,8 +183,8 @@ vienna_listings_cleaned <- vienna_listings %>%
   )
 
 #glimpse and skim again
-glimpse(vienna_listings_cleaned)
-skimr::skim(vienna_listings_cleaned)
+kable(glimpse(vienna_listings_cleaned))
+kable(skimr::skim(vienna_listings_cleaned))
 ```
 
 ### Analysis on Price
@@ -241,8 +242,8 @@ vienna_listings_final <- vienna_listings_final%>%
 
 ```{r}
 #glimpse and skim again
-glimpse(vienna_listings_final)
-skim(vienna_listings_final)
+kable(glimpse(vienna_listings_final))
+kable(skim(vienna_listings_final))
 ```
 
 ### Summary
@@ -260,10 +261,10 @@ Character variables * 4 : host_response_time, neighbourhood_cleansed, property_t
 
 ## Characters to factor values  
 
-```{r}
+```{r, }
 # Create factor variables for host response time 
-unique(vienna_listings_final$host_response_time)
-vienna_listings_final %>% 
+kable(unique(vienna_listings_final$host_response_time))
+invisible(vienna_listings_final %>% 
   mutate(
     # mark "N/A" as missing values
     host_response_time = ifelse(host_response_time =="N/A",NA,host_response_time),
@@ -273,11 +274,12 @@ vienna_listings_final %>%
                                             "within a few hours",
                                             "within a day",
                                             "a few days or more"
-                                            ))
+                                            )))
 # Create factor variables for room types 
 unique(vienna_listings_final$room_type)
-vienna_listings_final$room_type <- factor(vienna_listings_final$room_type, 
-                                          labels = unique(vienna_listings_final$room_type))
+invisible(vienna_listings_final$room_type <- factor(vienna_listings_final$room_type, 
+                                          labels = unique(vienna_listings_final$room_type)))
+
 ```
 
 ## Propery types
@@ -291,7 +293,7 @@ property_type_count <- vienna_listings_final %>%
     mutate(percentage = n/sum(n)*100)%>%
     arrange(desc(n))
 
-property_type_count
+kable(property_type_count)
 ```
 
 Top 4: 
@@ -315,9 +317,9 @@ vienna_listings_final <- vienna_listings_final %>%
 
 Use the code below to check that `prop_type_simplified` was correctly made.
 ```{r}
-vienna_listings_final %>%
+kable(vienna_listings_final %>%
   count(property_type, prop_type_simplified) %>%
-  arrange(desc(n))        
+  arrange(desc(n)))        
 ```  
 
 Next we can make a factor out of prop_type_simplified, remove original column   
@@ -353,7 +355,8 @@ vienna_listings_final %>%
   mutate(minimum_nights=as.integer(minimum_nights)) %>%
   ggplot(aes(x=minimum_nights))+
   geom_bar()+
-  scale_x_continuous(breaks = seq(0,10,1))
+  scale_x_continuous(breaks = seq(0,10,1)) +
+  theme_economist()
   
 ```
 
@@ -366,7 +369,7 @@ Filter the airbnb data so that it only includes observations with `minimum_night
 vienna_listings_final <- vienna_listings_final %>% 
   filter(minimum_nights<=4) %>% 
   filter(maximum_nights>=4) # Since we will be modelling the price to stay for four nights, maximum stay must be greater than or equal to 4
-vienna_listings_final
+kable(vienna_listings_final)
 ```
 
 We now have only 8,844 listings.
@@ -397,7 +400,7 @@ dist_neighbourhood <- vienna_listings_final %>%
   ) %>% 
   arrange(med_dist)
 
-dist_neighbourhood
+kable(dist_neighbourhood)
 ```
 
 Plot Neighbourhood median price against median distance from city center
@@ -419,7 +422,8 @@ dist_neighbourhood %>%
         axis.title.y = element_text(size=12,face='bold'),
         ) +
   labs(title = "Neighbourhood median price against median distance from city center", 
-       x="Median distance from city center",y="Median Price")
+       x="Median distance from city center",y="Median Price")+
+  theme_economist_white()
 ```
 Innere Stadt is the neighbourhood located right at city center (587.45m in average), thus reaching high average price.
 Neighbourhoods located less than 6 km to city center offer listings for price in range 55 to 65, with price decreasing when distance increase.
@@ -433,7 +437,7 @@ neighbourhood_sorted = vienna_listings_final %>%
   summarise(mean_price = mean(price)) %>% 
   arrange(-mean_price)
 
-neighbourhood_sorted
+kable(neighbourhood_sorted)
 ```
 
 We would like to divide our neighbourhoods into five different areas, as for the 23 we currently have, estimation error would be too high out of sample, potentially giving our out-of-sample predictions massive standard errors. We decide to group the areas by similar mean prices. Since Innere Stadt is such an outlier in terms of price, we divide the rest of the areas into four groups (5,6,6,5). 
@@ -467,9 +471,11 @@ vienna_listings_final <- vienna_listings_final %>%
 
 ```{r}
 # Do boxplot for each neighbourhood simplified
-#vienna_listings_final %>% 
-  #ggplot(aes(x=price)) %>% 
-  #boxplot(neighbourhood_simplified)
+vienna_listings_final %>% 
+  filter(!is.na(neighbourhood_simplified)) %>% 
+  ggplot(aes(y=price)) + 
+  geom_boxplot(aes(x=neighbourhood_simplified), levels=c("Innere Stadt", "T2", "T3", "T4", "T5"))+
+  theme_economist()
 ```
 
 
@@ -497,13 +503,15 @@ vienna_listings_reg <- vienna_listings_final %>%
 ```{r}
 # Visualise the Price
 vienna_listings_reg %>% ggplot(aes(price_4_nights)) + 
-  geom_density()
+  geom_density()+
+  theme_economist()
 ```
 
 ```{r}
 # Visualise the Price
 vienna_listings_reg %>% ggplot(aes(x=lnprice_4_nights)) + 
-  geom_density()
+  geom_density()+
+  theme_economist()
 ```
 
 We should use `log(price_4_nights)` for the regression model because it is more normally distributed. The positive skew in the price_4_nights variable makes it more difficult to predict extreme values of price, relative to the normalised 
@@ -541,8 +549,9 @@ vienna_test <- testing(train_test_split)
 # Scatterplot/Correlation matrix for numerical variables
 vienna_train %>% 
   select(where(is.numeric)) %>% 
-  select(-price)%>%
-  ggpairs()
+  select(-price )%>%
+  ggpairs()+
+  theme_economist()
 ```
 ## Summary of correlations between variables:
 
@@ -769,7 +778,7 @@ models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7,
                  stars = NULL
 ) %>% 
   set_caption('Comparison of models')
-models_compare
+kable(models_compare)
 
 # Get list of adjusted R squared values
 ar2_comparison = data.frame(summary(model1)$adj.r.squared,summary(model2)$adj.r.squared,summary(model3)$adj.r.squared,summary(model4)$adj.r.squared,summary(model5)$adj.r.squared,summary(model6)$adj.r.squared,summary(model7)$adj.r.squared,summary(model8)$adj.r.squared)
@@ -789,7 +798,7 @@ RMSE8 = 100*sd((predict(model8, vienna_test)-vienna_test$lnprice_4_nights),na.rm
 
 RMSE_compare = data.frame(RMSE1, RMSE2, RMSE3, RMSE4, RMSE5, RMSE6, RMSE7, RMSE8)
 
-RMSE_compare
+kable(RMSE_compare)
 ```
 Model 7 demonstrates the highest coefficient of determination, the lowest out-of-sample RMSE, and the lowest AIC amongst the models. Therefore, we decide to select this as our optimal model for the predictions. On average, this model should give us the most accurate predictions for average property price for the given input variables with the lowest standard errors.
 
@@ -811,11 +820,32 @@ imaginary_stay1 <- data_frame(room_types="Private room",
                               availability_30=mean(vienna_listings_reg$availability_30))
 
 pred1=data.frame(exp(predict.lm(model7, imaginary_stay1,  interval = "confidence")), row.names = c("Innere Stadt","T2", "T3", "T4", "T5"))
-pred1
+kable(pred1)
 ```
-This demonstrates the significant difference between the neighbourhoods, with Innere Stadt the obvious positive outlier in terms of price. This table gives the user the location/price trade-off of staying in a nicer or potentially better located area, with the given assumptions above.
+The table above gives the 95% confidence interval and expectation of the price for two people to stay for four nights with the other crieria mentioned for each of the simplified neighbourhood buckets. This demonstrates the significant difference between the neighbourhoods, with Innere Stadt the obvious positive outlier in terms of price. This table gives the user the location/price trade-off of staying in a nicer or potentially better located area, with the given assumptions above.
 
+```{r, fig.width=10, fig.height=4}
+#plotting graph using geom_errorbar
+difference_pred1<- pred1 %>% 
+  ggplot(aes(color=row.names(pred1))) +
+  geom_errorbar(aes(y=row.names(pred1),xmin=lwr,xmax= upr),width=0.1,size=1.5,show.legend = FALSE) +
+  geom_point(aes(x=fit,y=row.names(pred1)),size=5,show.legend = FALSE)+
+  geom_text(aes(label=round(lwr,digits=2),x=round(lwr,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.5,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  geom_text(aes(label=round(upr,digits=2),x=round(upr,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.5,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  geom_text(aes(label=round(fit,digits=2),,x=round(fit,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.4,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  theme(legend.position="none",legend.title = element_blank())+
+  labs(
+    title = "Prediction by Neighbourhood",
+    subtitle = "95% Confidence Intervals",
+    x = "Prediction Price for Two People for Four Nights",
+    y = "Neighbourhoods"
+    )+
+  theme_economist()+
+  NULL
 
+difference_pred1
+```
+Note that the 95% confidence intervals for the predictions for T5 and T4 overlap, as do T3 and T2. However, they are statistically significant predictors so we are not alarmed. 
 
 
 # Deliverables
