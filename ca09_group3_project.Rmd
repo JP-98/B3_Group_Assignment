@@ -806,7 +806,7 @@ kable(RMSE_compare)
 ```
 Model 7 demonstrates the highest coefficient of determination, the lowest out-of-sample RMSE, and the lowest AIC amongst the models. Therefore, we decide to select this as our optimal model for the predictions. On average, this model should give us the most accurate predictions for average property price for the given input variables with the lowest standard errors.
 
-Its residuals are approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The qq plot is approximately along the 45 degree line also. It does not appear that we require heteroskedasticity robust standard errors.
+Its residuals all randomly scatter around its mean of 0, and are approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The QQ plot is approximately along the 45 degree line also, with most residual points well fitted. It does not appear that we require heteroskedasticity robust standard errors.
 
 ## Predictions
 
