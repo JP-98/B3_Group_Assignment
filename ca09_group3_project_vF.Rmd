@@ -59,11 +59,10 @@ This coursework focuses on applying a multivariate linear regression model to pr
 ## Results
 
 Our optimal model reads as follows:
-$Y = 3.64 - 0.44(Private\ Room) - 0.57(Shared\ Room) - 0.17(T5) - 0.13(T4) + 0.05(T2) + 
-0.38(Innere\ Stadt) + 0.29(Rating) + 0.09(Accommodates) + 0.14(Bathrooms) + 0.06(Superhost) + 0.01(Availability\_30)$
+$Y = 3.64 - 0.44(Private\ Room) - 0.57(Shared\ Room) - 0.17(T5) - 0.13(T4) + 0.05(T2) + 0.38(Innere\ Stadt) + 0.29(Rating) + 0.09(Accommodates) + 0.14(Bathrooms) + 0.06(Superhost) + 0.01(Availability\_30) + \epsilon_i$
  - where Y = ln(price_4_nights).
  
-This analysis is very approachable for the average person given the obvious logic behind each of the variables. We can interpret the following factors which influence the average expected price to stay in Vienna for four nights as follows:
+This analysis is very approachable for the average person given the obvious logic behind each of the variables. We also note that we interpreted the log-linear coefficients as approximated percentage changes, though we understand that there will be slight deviations in reality from the approximated change and actual. We can interpret the following factors which influence the average expected price to stay in Vienna for four nights as follows:
 
  - Private Room: the negative coefficient shows that you should expect to pay less for a private room in a shared accommodation as opposed to a hotel room (which is the baseline). This signifies a negative premium (c. -44%) for having to share the other facilities in an accommodation. This is a dummy variable, i.e. is either one or zero if it is a private room or not.
  - Shared Room: this has a more negative coefficient than the Private Room which signifies that people on average should expect to pay less for a shared room than a private room, which makes sense (e.g. hostel vs hotel)
@@ -200,7 +199,9 @@ skimr::skim(vienna_listings_cleaned) # kable is too slow with skim
 ```{r}
 # Visualise the Price
 vienna_listings_cleaned %>% ggplot(aes(x=price)) + 
-  geom_density()
+  geom_density()+labs(
+    title = "Price PDF")+
+  theme_economist()
 
 ```
 
@@ -211,7 +212,9 @@ vienna_listings_cleaned <- vienna_listings_cleaned %>%
 
 # Visualise the Data
 vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) + 
-  geom_density()
+  geom_density()+labs(
+    title = "Log Price PDF")+
+  theme_economist()
 ```
 
 ```{r}
@@ -227,7 +230,9 @@ vienna_listings_cleaned <- vienna_listings_cleaned %>%
 
 # Visualise the Data
 vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) + 
-  geom_density()
+  geom_density()+labs(
+    title = "Log Price PDF (Tails Removed)")+
+  theme_economist()
 
 ```
 
@@ -262,7 +267,8 @@ kable(skim(vienna_listings_final))
 
 ```{r, }
 # Create factor variables for host response time 
-kable(unique(vienna_listings_final$host_response_time))
+kable(unique(vienna_listings_final$host_response_time)) %>% 
+  kable_styling()
 invisible(vienna_listings_final %>% 
   mutate(
     # mark "N/A" as missing values
@@ -275,7 +281,8 @@ invisible(vienna_listings_final %>%
                                             "a few days or more"
                                             )))
 # Create factor variables for room types 
-kable(unique(vienna_listings_final$room_type))
+kable(unique(vienna_listings_final$room_type))%>% 
+  kable_styling()
 invisible(vienna_listings_final$room_type <- factor(vienna_listings_final$room_type, 
                                           labels = unique(vienna_listings_final$room_type)))
 
@@ -304,7 +311,9 @@ property_type_count <- vienna_listings_final %>%
     arrange(desc(n))
 
 kable(property_type_count)
+
 ```
+
 
 
 
@@ -334,7 +343,8 @@ vienna_listings_final <- vienna_listings_final %>%
 # Check if done correctly
 kable(vienna_listings_final %>%
   count(property_type, prop_type_simplified) %>%
-  arrange(desc(n)))        
+  arrange(desc(n)))
+
 ```  
 
 
@@ -361,7 +371,8 @@ vienna_listings_final <- vienna_listings_final %>%
 vienna_listings_final %>% 
   ggplot(aes(x=minimum_nights))+
   geom_histogram() +
-  theme_economist()
+  theme_economist() +
+  labs(title="Minimum Nights Distribution")
 
 vienna_listings_final %>% 
   filter(minimum_nights<=10) %>%
@@ -369,8 +380,8 @@ vienna_listings_final %>%
   ggplot(aes(x=minimum_nights))+
   geom_bar()+
   scale_x_continuous(breaks = seq(0,10,1)) +
-  theme_economist()
-  
+  theme_economist() +
+  labs(title="Minimum Nights Distribution (Outliers Removed)")
 ```
 
 - The most common values for the variable minimum_nights is 1,2,3.
@@ -414,7 +425,8 @@ dist_neighbourhood <- vienna_listings_final %>%
   ) %>% 
   arrange(med_dist)
 
-kable(dist_neighbourhood)
+kable(dist_neighbourhood) %>% 
+  kable_styling()
 ```
 
 > We now plot Neighbourhood median price against median distance from city center
@@ -454,7 +466,8 @@ neighbourhood_sorted = vienna_listings_final %>%
   summarise(mean_price = mean(price)) %>% 
   arrange(-mean_price)
 
-kable(neighbourhood_sorted)
+kable(neighbourhood_sorted) %>% 
+  kable_styling()
 ```
 
 We would like to divide our neighbourhoods into five different areas, as for the 23 we currently have, estimation error embedded in our final model would be too high out of sample, potentially giving our out-of-sample predictions massive standard errors. We decide to group the areas by similar mean prices. Since Innere Stadt is such an outlier in terms of price, we divide the rest of the areas into four groups (5,6,6,5). 
@@ -492,9 +505,11 @@ vienna_listings_final %>%
   filter(!is.na(neighbourhood_simplified)) %>% 
   ggplot(aes(y=price)) + 
   geom_boxplot(aes(x=fct_reorder(neighbourhood_simplified,price,median,.desc=TRUE)))+
+  labs(title = "Median Price by Neighbourhood")+
   theme_economist()+
   theme(
     axis.title.x= element_blank()) # have to put this after we use economist theme or it puts the x axis title back
+  
 ```
 
 We can see see the gradual decline in median price from T2 to T5, but, again, Innere Stadt really stands out as the most in demand location for travelers visiting Vienna. As we saw earlier however, the median price for the locations doesn't appear to be dependent on location in general. We cross-checked the logic of this with our resident Vienna group member, who confirmed that some of the nicest areas which are generlly in quite high demand from tourists are outside the city centre. Since Vienna's attractions lie in its architecture and general beauty, we can assume that it is probably a more mature tourist audience, who may want to avoid the hustle and bustle of the city, seeing as nightlife isn't the primary attraction of Vienna. 
@@ -522,6 +537,7 @@ vienna_listings_reg <- vienna_listings_final %>%
 # Visualise the Price
 vienna_listings_reg %>% ggplot(aes(price_4_nights)) + 
   geom_density()+
+  labs(title = "Price for Four Nights")+
   theme_economist()
 ```
 
@@ -529,10 +545,11 @@ vienna_listings_reg %>% ggplot(aes(price_4_nights)) +
 # Visualise the Price
 vienna_listings_reg %>% ggplot(aes(x=lnprice_4_nights)) + 
   geom_density()+
+  labs(title = "Log Price for Four Nights")+
   theme_economist()
 ```
 
-> We use `log(price_4_nights)` for the regression model for the reasons mentioned earlier. The positive skew in the price_4_nights variable makes it more difficult to predict extreme values of price, relative to the normalised natural logarithm.
+> We use log(price_4_nights) for the regression model for the reasons mentioned earlier. The positive skew in the price_4_nights variable makes it more difficult to predict extreme values of price, relative to the normalised natural logarithm.
 
 
 ### Deal with Missing/Unreliable Values
@@ -594,7 +611,8 @@ However, some scatterplots cannot support a linear relationship between variable
 model1 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating, data = vienna_train)
 par(mfrow=c(2,2)) 
 msummary(model1)
-kable(car::vif(model1))
+kable(car::vif(model1)) %>% 
+  kable_styling()
 autoplot(model1) +
   theme_minimal() + 
   labs (title = "Model 1 Diagnostic Plots")
@@ -607,7 +625,7 @@ Metrics:
  - We later look at the AIC and out-of-sample RMSE of the models, seeing as these are generally used for comparison
  - We use the vif() function to check for multicollinearity between the regressors. We get low VIF values here so it shouldn't be an issue amongst these variables going forward
 
-The coefficients:
+The Coefficients:
 
  - Our intercept here is 4.377. When we convert this to price it gives us a value of almost 80, which also shows that we must be omitting a large number of determinants of price
  - The review_scores_rating coefficient is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the cost for 2 people and 4 nights at Vienna increases by approximately 2.56% (property of log-linear regression)
@@ -625,7 +643,8 @@ The coefficients:
 ```{r}
 model2 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating, data = vienna_train)
 msummary(model2)
-kable(car::vif(model2))
+kable(car::vif(model2)) %>% 
+  kable_styling()
 autoplot(model2) +
   theme_minimal() + 
   labs (title = "Model 2 Diagnostic Plots")
@@ -655,7 +674,8 @@ vienna_train %>%
 model3 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
              +accommodates+bathrooms, data = vienna_train)
 msummary(model3)
-kable(car::vif(model3))
+kable(car::vif(model3)) %>% 
+  kable_styling()
 autoplot(model3) +
   theme_minimal() + 
   labs (title = "Model 3 Diagnostic Plots")
@@ -674,7 +694,8 @@ autoplot(model3) +
 model4 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
              +accommodates+bathrooms+host_is_superhost, data = vienna_train)
 msummary(model4)
-kable(car::vif(model4))
+kable(car::vif(model4)) %>% 
+  kable_styling()
 autoplot(model4) +
   theme_minimal() + 
   labs (title = "Model 4 Diagnostic Plots")
@@ -692,7 +713,8 @@ autoplot(model4) +
 ```{r}
 model5 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost+instant_bookable, data = vienna_train)
 msummary(model5)
-kable(car::vif(model5))
+kable(car::vif(model5)) %>% 
+  kable_styling()
 autoplot(model5) +
   theme_minimal() + 
   labs (title = "Model 5 Diagnostic Plots")
@@ -708,7 +730,8 @@ autoplot(model5) +
 ```{r}
 model6 <- lm(lnprice_4_nights ~ room_type+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
 msummary(model6)
-kable(car::vif(model6))
+kable(car::vif(model6)) %>% 
+  kable_styling()
 autoplot(model6) +
   theme_minimal() + 
   labs (title = "Model 6 Diagnostic Plots")+
@@ -759,7 +782,8 @@ vienna_test <- vienna_test %>%
 ```{r}
 model6 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
 msummary(model6)
-kable(car::vif(model6))
+kable(car::vif(model6)) %>% 
+  kable_styling()
 autoplot(model6) +
   theme_minimal() + 
   labs (title = "Model 6 Diagnostic Plots")+
@@ -787,7 +811,8 @@ vienna_train %>%
 ```{r}
 model7 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30, data = vienna_train)
 msummary(model7)
-kable(car::vif(model7))
+kable(car::vif(model7)) %>% 
+  kable_styling()
 autoplot(model7) +
   theme_minimal() + 
   labs(title = "Model 7 Diagnostic Plots")+
@@ -809,8 +834,9 @@ Relevant variables not tested yet:
 
  - host_identity_verified
  - host_total_listings_count (not logically deterministic of price)
- - host_acceptance_rate (too many missing values)
- - host_response_rate (too many missing values)
+ - host_acceptance_rate (too many missing entries)
+ - host_response_rate (too many missing entries)
+ - host_response_time (too many missing entries)
 
 
 ### Model 8
@@ -820,7 +846,8 @@ We decide to test the host_identity_verified Boolean variable, as we can logical
 ```{r}
 model8 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
 msummary(model8)
-kable(car::vif(model8))
+kable(car::vif(model8)) %>% 
+  kable_styling()
 autoplot(model8) +
   theme_minimal() + 
   labs (title = "Model 8 Diagnostic Plots")+
@@ -862,27 +889,30 @@ RMSE8 = 100*sd((predict(model8, vienna_test)-vienna_test$lnprice_4_nights),na.rm
 
 RMSE_compare = data.frame(RMSE1, RMSE2, RMSE3, RMSE4, RMSE5, RMSE6, RMSE7, RMSE8)
 
-kable(RMSE_compare)
+kable(RMSE_compare)%>% 
+  kable_styling()
+
 ```
 
 
-Adjusted R-Squared
+
+**Adjusted R-Squared**
 
  - Model 7 demonstrates the highest coefficient of determination
 
-Residual Standard Error
+**Residual Standard Error**
 
  - Model 7 demonstrates the lowest residual standard error amongst the models, which should give us narrower prediction intervals as desired
 
-AIC
+**AIC**
 
  - Model 7 demonstrates the lowest AIC amongst the models. The akaike information criterion (AIC) is a very useful metric when determining if the addition of additional explanatory variables in a multivariate model justifies the addition of another estimated parameter. It includes a loss function which penalises the model based on the number of coefficients/parameters estimated
 
-Out-of-sample RMSE
+**Out-of-sample RMSE**
 
  - Model 7 demonstrates the lowest out-of-sample RMSE
  
-Residuals
+**Residuals**
 
  - Model 7's residuals appear to be randomly scattered around its mean of 0, and look approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The QQ plot is approximately along the 45 degree line also, with most residual quantiles well-fitted (note some deviation for extreme values however). It does not appear that we require heteroskedasticity robust standard errors.
 
@@ -896,8 +926,7 @@ Findings and Recommendations
 
 Finally, we use our optimised model for predictions. The model reads:
 
-$Y = 3.64 - 0.44(Private\ Room) - 0.57(Shared\ Room) - 0.17(T5) - 0.13(T4) + 0.05(T2) + 
-0.38(Innere\ Stadt) + 0.29(Rating) + 0.09(Accommodates) + 0.14(Bathrooms) + 0.06(Superhost) + 0.01(Availability\_30)$
+$Y = 3.64 - 0.44(Private\ Room) - 0.57(Shared\ Room) - 0.17(T5) - 0.13(T4) + 0.05(T2) + 0.38(Innere\ Stadt) + 0.29(Rating) + 0.09(Accommodates) + 0.14(Bathrooms) + 0.06(Superhost) + 0.01(Availability\_30) + \epsilon_i$
 
  - where Y = ln(price_4_nights)
  
@@ -946,7 +975,8 @@ imaginary_stay1 <- data_frame(room_types="Private room",
                               availability_30=mean(vienna_listings_reg$availability_30))
 
 pred1=data.frame(exp(predict.lm(model7, imaginary_stay1,  interval = "confidence")), row.names = c("Innere Stadt","T2", "T3", "T4", "T5"))
-kable(pred1)
+kable(pred1)%>% 
+  kable_styling()
 ```
 
 > The table above gives the 95% confidence interval and expectation of the price for two people to stay for four nights with the other criteria mentioned for each of the simplified neighbourhood buckets. This demonstrates the significant difference between the neighbourhoods, with Innere Stadt the obvious positive outlier in terms of price. This table gives the user the location/price trade-off of staying in a nicer or potentially better located area, with the given assumptions above.
