@@ -1,0 +1,885 @@
+---
+title: "Final Group Project: AirBnB analytics"
+date: "12 Oct 2021"
+author: "Reading Time: About 8 minutes"
+output:
+  html_document:
+    highlight: zenburn
+    theme: flatly
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    code_folding: show
+---
+
+
+```{r setup, include=FALSE}
+# leave this chunk alone
+options(knitr.table.format = "html") 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, 
+  comment = NA, dpi = 300)
+options(warn=-1)
+knitr::opts_chunk$set(message = FALSE)
+Sys.setlocale("LC_MESSAGES", 'en_GB.UTF-8')
+Sys.setenv(LANG = "en_US.UTF-8")
+```
+
+
+```{r load-libraries, echo=FALSE, warning=FALSE,message=FALSE}
+
+library(tidyverse) # the usual stuff: dplyr, readr, and other goodies
+library(lubridate) # to handle dates
+library(GGally) # for correlation-scatter plot matrix
+library(ggfortify) # to produce residual diagnostic plots
+library(rsample) # to split dataframe in training- & testing sets
+library(janitor) # clean_names()
+library(broom) # use broom:augment() to get tidy table with regression output, residuals, etc
+library(huxtable) # to get summary table of all models produced
+library(kableExtra) # for formatting tables
+library(moderndive) # for getting regression tables
+library(skimr) # for skim
+library(mosaic)
+library(leaflet) # for interactive HTML maps
+library(tidytext)
+library(viridis)
+library(vroom)
+library(geosphere)
+library(ggrepel)
+library(rsample)
+library(lemon)
+library(ggthemes)
+knit_print.data.frame <- lemon_print
+```
+
+# Introduction #
+
+This coursework focuses on applying a multivariate linear regression model to predict the total cost for two people staying 4 nights in an Airbnb in Austria. The data set is large and complex (non-numerical values, variables with several NA values...), so we are careful and conservative with the steps taken. In the exploratory analysis section, we first start by analysing the data to identify correlations and relationships. We also make sure to tidy up the data by adjusting the relevant variables. This analysis is further illustrated by some visualisations, which will allow us to make assumptions for our regression analysis. The next step consists of applying backward stepwise regression: We start with the full linear regression model and sequentially delete the predictor that has least input on the fit. We stop when all variables are statistically significant at the 5%. The methodology has been well-researched, so our contribution is largely empirical. We discover that the price estimates are on mostly in-line with our conjectures (neighbourhood, ratings...). The analysis has been performed in R.
+
+
+```{r load_data, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+# use cache=TRUE so you dont download the data everytime you knit
+vienna_listings <- vroom("http://data.insideairbnb.com/austria/vienna/vienna/2021-09-12/data/listings.csv.gz") %>%
+  clean_names()
+```
+
+```{r parse price}
+# Price is a character, parse to integer
+vienna_listings <- vienna_listings %>% 
+  mutate(price = parse_number(price))
+
+# In case of duplicate rows
+unique_listings = unique(listings[,])
+```
+
+
+Even though there are many variables in the dataframe, here is a quick description of some of the variables collected, and you can find a [data dictionary here](https://docs.google.com/spreadsheets/d/1iWCNJcSutYqpULSQHlNyGInUvHg2BoUGoNRIGa6Szc4/edit#gid=982310896)
+
+- `price` = cost per night 
+- `property_type`: type of accommodation (House, Apartment, etc.)
+- `room_type`:
+
+  - Entire home/apt (guests have entire place to themselves)
+  - Private room (Guests have private room to sleep, all other rooms shared)
+  - Shared room (Guests sleep in room shared with others)
+
+- `number_of_reviews`: Total number of reviews for the listing
+- `review_scores_rating`: Average review score (0 - 100)
+- `longitude` , `latitude`: geographical coordinates to help us locate the listing
+- `neighbourhood*`: three variables on a few major neighbourhoods in each city 
+
+
+# Mapping 
+
+Visualisations of feature distributions and their relations are key to understanding a data set, and they can open up new lines of exploration. While we do not have time to go into all the wonderful geospatial visualisations one can do with R, you can use the following code to start with a map of your city, and overlay all AirBnB coordinates to get an overview of the spatial distribution of AirBnB rentals. For this visualisation we use the `leaflet` package, which includes a variety of tools for interactive maps, so you can easily zoom in-out, click on a point to get the actual AirBnB listing for that specific point, etc.
+
+The following code, having downloaded a dataframe `listings` with all AirbnB listings in Milan, will plot on the map all AirBnBs where `minimum_nights` is less than equal to four (4). You could learn more about `leaflet`, by following [the relevant Datacamp course on mapping with leaflet](https://www.datacamp.com/courses/interactive-maps-with-leaflet-in-r)
+
+
+```{r, out.width = '80%'}
+
+leaflet(data = filter(vienna_listings, minimum_nights <= 4)) %>% 
+  addProviderTiles("OpenStreetMap.Mapnik") %>% 
+  addCircleMarkers(lng = ~longitude, 
+                   lat = ~latitude, 
+                   radius = 1, 
+                   fillColor = "blue", 
+                   fillOpacity = 0.4, 
+                   popup = ~listing_url,
+                   label = ~property_type)
+```
+
+    
+    
+# Exploratory Data Analysis (EDA)
+
+In the [R4DS Exploratory Data Analysis chapter](http://r4ds.had.co.nz/exploratory-data-analysis.html){target="_blank"}, the authors state:
+
+> "Your goal during EDA is to develop an understanding of your data. The easiest way to do this is to use questions as tools to guide your investigation... EDA is fundamentally a creative process. And like most creative processes, the key to asking quality questions is to generate a large quantity of questions."
+
+
+Conduct a thorough EDA. Recall that an EDA involves three things:
+
+* Looking at the raw values.
+    * `dplyr::glimpse()`
+* Computing summary statistics of the variables of interest, or finding NAs
+    * `mosaic::favstats()`
+    * `skimr::skim()`
+* Creating informative visualizations.
+    * `ggplot2::ggplot()`
+        * `geom_histogram()` or `geom_density()` for numeric continuous variables
+        * `geom_bar()` or `geom_col()` for categorical variables
+    * `GGally::ggpairs()` for scaterrlot/correlation matrix
+        * Note that you can add transparency to points/density plots in the `aes` call, for example: `aes(colour = gender, alpha = 0.4)`
+
+
+## Variable summary and selection on logic
+
+### Glimpse
+```{r}
+# Use Glimpse from the Dplyr package to get an initial look at the raw data
+kable(dplyr::glimpse(vienna_listings))
+```
+
+### Skim data
+```{r}
+# Generate summary statistics with mosaic and skimr packages
+kable(skimr::skim(vienna_listings))
+```
+
+
+## Select meaningful variables based on logic
+
+Since there are 73 independent variables and many of them don't make any sense (eg. url) for price prediction, we select some variables for simplifying later exploration. 
+```{r}
+# Logical screening
+
+vienna_listings_cleaned <- vienna_listings %>% 
+  select(
+    price,
+    host_response_time,
+    host_response_rate,
+    host_acceptance_rate,
+    host_is_superhost,
+    host_total_listings_count,
+    host_identity_verified,
+    neighbourhood_cleansed, #23 areas
+    latitude,
+    longitude,
+    property_type,
+    room_type,
+    bathrooms_text,
+    bedrooms,
+    accommodates,
+    beds,
+    minimum_nights,
+    maximum_nights,
+    availability_30,
+    availability_365,
+    instant_bookable,
+    number_of_reviews_ltm,
+    number_of_reviews,
+    review_scores_rating,
+    reviews_per_month
+  )
+
+#glimpse and skim again
+kable(glimpse(vienna_listings_cleaned))
+kable(skimr::skim(vienna_listings_cleaned))
+```
+
+### Analysis on Price
+
+```{r}
+# Visualise the Price
+vienna_listings_cleaned %>% ggplot(aes(x=price)) + 
+  geom_density()
+
+```
+
+```{r,out.width="100%"}
+# Our data is very positively skewed which will make prediction more difficult, so we take the natural log of price to normalise the data
+vienna_listings_cleaned <- vienna_listings_cleaned %>% 
+  mutate(lnprice = log(price))
+
+# Visualise the Data
+vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) + 
+  geom_density()
+```
+
+```{r}
+confint(vienna_listings_cleaned$price, mean, level = 0.9)
+```
+
+This gives us approximate price upper and lower bounds of €20 and €169 respectively.
+
+```{r,out.width="100%"}
+# Remove positive outliers and non-sensical/irrelevant values left of the mean to build a more meaningful analsysis
+vienna_listings_cleaned <- vienna_listings_cleaned %>% 
+  filter(between(lnprice, log(20), log(169)), na.RM=TRUE)
+
+# Visualise the Data
+vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) + 
+  geom_density()
+
+```
+
+```{r}
+# save this dataset
+vienna_listings_final <- vienna_listings_cleaned
+```
+
+
+### Non-numerical to numerical: Bathrooms, host_response_rate, host_acceptance_rate
+```{r,warning = FALSE,message = FALSE}
+vienna_listings_final <- vienna_listings_final%>%
+  mutate(bathrooms = parse_number(bathrooms_text),
+         host_response_rate = parse_number(host_response_rate),
+         host_acceptance_rate = parse_number(host_acceptance_rate))%>%
+  select(-bathrooms_text)
+```
+
+### Summary of Findings: 
+
+```{r}
+#glimpse and skim again
+kable(glimpse(vienna_listings_final))
+kable(skim(vienna_listings_final))
+```
+
+### Summary
+In the original raw data, there are 74 Variables with 11,583 Observations. After filtering the data based on log price (to remove NA price values and outliers), we have 10,602 observations. 
+
+After variable selection based on logic, we have 26 variables.
+
+ - The following variables are numbers: 
+Numeric Variables * 19: host_total_listings_count, host_response_rate, host_acceptance_rate, accommodates, longitude, latitude, beds, bedrooms,bathrooms, variables for maximum and minimum nights, number of reviews, availabiity data, review scores data,  calculated host data etc. 
+
+ - The following are categorical or factor variables: 
+Logical/Boolean Variables * 3 : host_is_superhost, host_identity_verified, instant_bookable
+Character variables * 4 : host_response_time, neighbourhood_cleansed, property_type, room_type  
+
+
+## Characters to factor values  
+
+```{r, }
+# Create factor variables for host response time 
+kable(unique(vienna_listings_final$host_response_time))
+invisible(vienna_listings_final %>% 
+  mutate(
+    # mark "N/A" as missing values
+    host_response_time = ifelse(host_response_time =="N/A",NA,host_response_time),
+    # relevel
+    host_response_time = fct_relevel(host_response_time,
+                                            "within an hour", 
+                                            "within a few hours",
+                                            "within a day",
+                                            "a few days or more"
+                                            )))
+# Create factor variables for room types 
+unique(vienna_listings_final$room_type)
+invisible(vienna_listings_final$room_type <- factor(vienna_listings_final$room_type, 
+                                          labels = unique(vienna_listings_final$room_type)))
+
+```
+
+## Propery types
+
+Next, we look at the variable `property_type`. We can use the `count` function to determine how many categories there are their frequency. What are the top 4 most common property types? What proportion of the total listings do they make up? 
+
+```{r}
+# Identify the amount of each property type
+property_type_count <- vienna_listings_final %>%
+    count(property_type) %>%
+    mutate(percentage = n/sum(n)*100)%>%
+    arrange(desc(n))
+
+kable(property_type_count)
+```
+
+Top 4: 
+ - Entire rental unit (65.78%)
+ - Private room in rental unit (18.06%)
+ - Entire condominium (condo) (4.57%)
+ - Entire serviced apartment (2.76)
+
+Since the vast majority of the observations in the data are one of the top two property types (83%), we would like to combine Entire condominium (condo), Entire serviced apartment and Entire loft as a type called Entire apartment. We thought that this method was better suited to the Vienna dataset.
+We then create a simplified version of `property_type` variable that has 4 categories: the top two categories, Entire apartment and Other. Fill in the code below to create `prop_type_simplified`.
+
+```{r}
+# First we need to summarize the other values in the Category "Others"
+vienna_listings_final <- vienna_listings_final %>%
+  mutate(prop_type_simplified = case_when(
+    property_type %in% c("Entire rental unit","Private room in rental unit") ~ property_type, 
+    property_type %in% c( "Entire condominium (condo)", "Entire serviced apartment","Entire loft") ~ "Entire apartment",
+    TRUE ~ "Other"
+  ))
+```
+
+Use the code below to check that `prop_type_simplified` was correctly made.
+```{r}
+kable(vienna_listings_final %>%
+  count(property_type, prop_type_simplified) %>%
+  arrange(desc(n)))        
+```  
+
+Next we can make a factor out of prop_type_simplified, remove original column   
+
+```{r}
+vienna_listings_final <- vienna_listings_final %>% 
+  mutate(
+     prop_type_simplified = fct_relevel(prop_type_simplified,
+                                 "Entire rental unit",
+                                 "Private room in rental unit",
+                                 "Entire apartment",
+                                 "Other")) %>%
+  select(-property_type)
+```
+
+
+## Analysis on Minimum nights
+
+Airbnb is most commonly used for travel purposes, i.e., as an alternative to traditional hotels. We only want to include listings in our regression analysis that are intended for travel purposes:
+
+- What are the most common values for the variable `minimum_nights`?
+- Is there any value among the common values that stands out? 
+- What is the likely intended purpose for Airbnb listings with this seemingly unusual value for `minimum_nights`?
+
+```{r}
+# right skewed
+vienna_listings_final %>% 
+  ggplot(aes(x=minimum_nights))+
+  geom_histogram()
+
+vienna_listings_final %>% 
+  filter(minimum_nights<=10) %>%
+  mutate(minimum_nights=as.integer(minimum_nights)) %>%
+  ggplot(aes(x=minimum_nights))+
+  geom_bar()+
+  scale_x_continuous(breaks = seq(0,10,1)) +
+  theme_economist()
+  
+```
+
+- The most common values for the variable `minimum_nights` is 1,2,3.
+- 1 minimum night stands out among the common values.
+- The seemingly unusual large values for `minimum_nights` probably represent listings for long-term tenants, not for travellers.
+
+Filter the airbnb data so that it only includes observations with `minimum_nights <= 4`
+```{r}
+vienna_listings_final <- vienna_listings_final %>% 
+  filter(minimum_nights<=4) %>% 
+  filter(maximum_nights>=4) # Since we will be modelling the price to stay for four nights, maximum stay must be greater than or equal to 4
+kable(vienna_listings_final)
+```
+
+We now have only 8,844 listings.
+
+
+## Analysis on Location: neighbourhood, longitude & latitude
+
+We want to leverage the longitude and latitude variable by calculating the distance between every listing and center of Vienna.
+We take postcode 1010 as the center of Vienna.
+```{r}
+# Calculate the distance, meters as unit
+vienna_listings_final <- vienna_listings_final %>% 
+  rowwise() %>% 
+  mutate(
+    dist_from_cent = distm(c(latitude, longitude), c(48.208604427334215, 16.37353507157435), 
+                      fun = distVincentyEllipsoid)[1,1]
+  ) 
+```
+
+Compare median distance of each neighbourhood. Use median to avoid outliers.
+```{r}
+dist_neighbourhood <- vienna_listings_final %>% 
+  group_by(neighbourhood_cleansed) %>% 
+  summarise(
+    med_dist = median(dist_from_cent),
+    med_price = median(price),
+    count_listings = n()
+  ) %>% 
+  arrange(med_dist)
+
+kable(dist_neighbourhood)
+```
+
+Plot Neighbourhood median price against median distance from city center
+```{r, fig.width=12, fig.height=8}
+dist_neighbourhood %>% 
+  ggplot(aes(x=med_dist,y=med_price,size=count_listings))+
+  geom_point(color="#1A5276",alpha=0.4)+
+  geom_text_repel(aes(label=neighbourhood_cleansed),size=4)+
+  scale_size_continuous(range=c(4,20))+
+  theme_bw()+
+  theme(
+        plot.title =element_text(size=16, face='bold',hjust = 0,margin = margin(10,0,10,0)),
+        plot.subtitle =element_text(size=16, hjust = 0), 
+        axis.text.x = element_text(size=10),
+        axis.text.y = element_text(size=12),
+        axis.ticks.x = element_line(),
+        axis.ticks.y=element_line(),
+        axis.title.x = element_text(size=12,face='bold'),
+        axis.title.y = element_text(size=12,face='bold'),
+        ) +
+  labs(title = "Neighbourhood median price against median distance from city center", 
+       x="Median distance from city center",y="Median Price")+
+  theme_economist_white()
+```
+Innere Stadt is the neighbourhood located right at city center (587.45m in average), thus reaching high average price.
+Neighbourhoods located less than 6 km to city center offer listings for price in range 55 to 65, with price decreasing when distance increase.
+
+Interestingly, listings located more than 9km away have higher price for 60-70. There appears to be no certain pattern but we will investigate further later.
+
+```{r,render=lemon_print}
+# Grouping by neighbourhood_cleansed
+neighbourhood_sorted = vienna_listings_final %>% 
+ group_by(neighbourhood_cleansed) %>% 
+  summarise(mean_price = mean(price)) %>% 
+  arrange(-mean_price)
+
+kable(neighbourhood_sorted)
+```
+
+We would like to divide our neighbourhoods into five different areas, as for the 23 we currently have, estimation error would be too high out of sample, potentially giving our out-of-sample predictions massive standard errors. We decide to group the areas by similar mean prices. Since Innere Stadt is such an outlier in terms of price, we divide the rest of the areas into four groups (5,6,6,5). 
+
+Note that however, we get unicode characters in three of the neighbourhood cleansed variables. However, we can avoid any hassle and simply call the variable from the table of neighbourhood_cleansed mean prices. We will later assess our groupings to see if they are statistically significant (i.e. if the difference in means is statistically significant) in he regression model.
+
+```{r}
+# First we need to summarize the other values in the Category "Others"
+vienna_listings_final <- vienna_listings_final %>%
+  mutate(neighbourhood_simplified = case_when(
+    neighbourhood_cleansed %in% c("Innere Stadt") ~ neighbourhood_cleansed, 
+    neighbourhood_cleansed %in% c("Wieden", "Landstra§e", "Mariahilf", "Neubau", "Liesing") ~ "T2",
+    neighbourhood_cleansed %in% c("Leopoldstadt", "Alsergrund", "Hietzing", "Donaustadt", "Josefstadt") ~ "T3",
+    neighbourhood_cleansed %in% c(neighbourhood_sorted[12,1], "Brigittenau", "Favoriten", neighbourhood_sorted[15,1], "Margareten", "Floridsdorf") ~ "T4",
+    neighbourhood_cleansed %in% c(neighbourhood_sorted[18,1], "Meidling", "Simmering", "Penzing", "Hernals", "Ottakring") ~ "T5"
+  ))
+
+# Now we need to factorise the new variable
+vienna_listings_final <- vienna_listings_final %>% 
+  mutate(
+     neighbourhood_simplified = fct_relevel(neighbourhood_simplified,
+                                 "Innere Stadt",
+                                 "T2",
+                                 "T3",
+                                 "T4",
+                                 "T5")) %>%
+  select(-neighbourhood_cleansed)
+
+```
+
+
+```{r}
+# Do boxplot for each neighbourhood simplified
+vienna_listings_final %>% 
+  filter(!is.na(neighbourhood_simplified)) %>% 
+  ggplot(aes(y=price)) + 
+  geom_boxplot(aes(x=neighbourhood_simplified), levels=c("Innere Stadt", "T2", "T3", "T4", "T5"))+
+  theme_economist()
+```
+
+
+We can reasonably delete longitude and latitude from dataset now.
+```{r}
+vienna_listings_final <- vienna_listings_final %>% 
+  select(-c(longitude,latitude))
+```
+
+# Regression Analysis
+
+Model selection is a structured process. We first compute the target variable, which is the price for two people to stay for four nights. For the same reasons as earlier, we take the natural logarithm of this variable to normalise it. We then assess the correlation matrix of our numerical explanatory variables in order to determine which variables have the strongest relationships with the target variable, and to highlight variables with high collinearity so as to avoid multicollinearity issues amongst the regressors. We then iterate through a number of models in order to determine if the increase in adjusted r squared is worth the increase in exposure to estimation error in a stepwise forward regression processz. When building regression models with a large number of potential independent variables, we must be cautious of the tradeoff between in-sample bias and out of sample variance of predictions. To optimise our model based on this tradeoff, we can compare the adjusted R squared against the out of sample RMSE (from the testing data). We also perform other model diagnostics such as analysis of the residuals, in order to ensure that they are approximately normal and homoskedastic with a mean of zero.
+
+## Target variable
+
+For the target variable $Y$, we will use the cost for two people to stay at an Airbnb location for four (4) nights. We will create a new variable called `price_4_nights` that uses `price`, and `accomodates` to calculate the total cost for two people to stay at the Airbnb property for 4 nights. This is the variable $Y$ we want to explain.
+
+```{r}
+vienna_listings_reg <- vienna_listings_final %>% 
+  filter(accommodates>=2) %>%
+  mutate(price_4_nights = price * 4,
+         lnprice_4_nights = log(price_4_nights))
+```
+
+```{r}
+# Visualise the Price
+vienna_listings_reg %>% ggplot(aes(price_4_nights)) + 
+  geom_density()+
+  theme_economist()
+```
+
+```{r}
+# Visualise the Price
+vienna_listings_reg %>% ggplot(aes(x=lnprice_4_nights)) + 
+  geom_density()+
+  theme_economist()
+```
+
+We should use `log(price_4_nights)` for the regression model because it is more normally distributed. The positive skew in the price_4_nights variable makes it more difficult to predict extreme values of price, relative to the normalised 
+
+
+## Deal with missing values
+
+There are a lot of missing value in `review_scores_rating`, which we are quite confident will be a significant predictor. We have 6878 observations left out of 8844 if we remove all the missing values in `review_scores_rating`. We decide that it makes sense to remove these "unrated" properties as data on reviewed properties will on average be more reliable, and we still have sufficient datapoints to formulate a model.
+
+
+```{r}
+vienna_listings_reg <- vienna_listings_reg %>%
+  filter(!is.na(review_scores_rating)) %>% 
+  filter(number_of_reviews>=10) # filter out properties with less than 10 reviews, as we are predicting price for a property with at least 10 reviews with our optimal model, and newer/untested properties with too few reviews may give unreliable price data
+
+
+```
+
+
+## Split train dataset and test dataset.
+```{r Sampling}
+# Set seed so we will get the same results
+set.seed(202110)
+
+# Split our data 75% as train and 25% as test
+train_test_split <- initial_split(vienna_listings_reg, prop=0.75)
+vienna_train <- training(train_test_split)
+vienna_test <- testing(train_test_split)
+```
+
+
+# Correlation of variables
+
+```{r, correlation, fig.width=15, fig.height=12}
+# Scatterplot/Correlation matrix for numerical variables
+vienna_train %>% 
+  select(where(is.numeric)) %>% 
+  select(-price )%>%
+  ggpairs()+
+  theme_economist()
+```
+## Summary of correlations between variables:
+
+We can see there are many variables with have a high correlation with each other, eg. beds and accommodates. This means we need to consider multicollinearity in regression. However, Some scatterplots cannot support a linear relationship between variables, eg. price and total listings of the host. There could be some correlations  conditional on the value of a categorical variable, eg. the correlation between price and bedrooms could be conditional on property type or room type, since whether the listing is entire or a private room for rental might influence the number of bedrooms.
+
+## Model 1
+Fit a regression model called `model1` with the following explanatory variables: `prop_type_simplified`, `number_of_reviews`, and `review_scores_rating`. 
+```{r}
+model1 <- lm(lnprice_4_nights ~ prop_type_simplified+number_of_reviews+review_scores_rating, data = vienna_train)
+par(mfrow=c(2,2)) 
+msummary(model1)
+car::vif(model1)
+autoplot(model1) +
+  theme_minimal() + 
+  labs (title = "Model 1 Diagnostic Plots")
+```
+
+p-value of model1 is smaller than 0.05, which means it is a significant regression model that detect significant relationship to predict cost for 2 people and 4 nights at Vienna. The adjusted R-squared is 0.2368 which indicates that this model is not a very good fit.
+
+Coefficient of `review_scores_rating` is significant, indicating that the rating scores of reviews on a listing have a significant impact on costs. To be specific, with other variables same, if the review score increase by 1, we expect the cost for 2 people and 4 nights at Vienna increases by 2.56%.
+
+The coefficient of `number_of_reviews` is significant at the 5% level of significance.
+
+Coefficient of `prop_type_simplified` can be interpreted as dummy variables. The baseline category is Entire rental unit. Thus, the other three dummy variables' represent the deviation in mean log of price of four night stay of the three other property types.
+
+- Coefficient for Private room in rental unit is significant, indicating that the cost for a Private room in rental unit is significantly lower than cost for an Entire rental unit. This makes sense that the coefficient is negative because private rentals are meant to share kitchens and bathrooms with other people, thus leading to lower costs. To be specific, with other variables same, a Private room in rental unit costs approx. 62.4% less than an Entire rental unit (properties of log-linear regression).
+
+- Coefficient for Entire apartment is significant, indicating that the cost for a Entire apartment is significantly higher than cost for an Entire rental unit. This makes sense that the coefficient is positive because Entire rental unit in this dataset is not specified and maybe worse than a Entire apartment. To be specific, with other variables same, an Entire apartment costs 6.02% more than an Entire rental unit.
+
+- Coefficient for Other properties is significant, indicating that cost for other properties is significantly lower than an Entire rental unit. This is probably because this category includes a mix of properties like share rooms. To be specific, with other variables same, Other properties costs 17.91% less than an Entire rental unit.
+
+We use the vif() function to check for multicollinearity between the regressors. We get very low VIF values here so it shouldn't be an issue amongst these variables going forward.
+
+## Model 2
+We want to determine if `room_type` is a significant predictor of the cost for 4 nights, given everything else in the model. 
+```{r}
+model2 <- lm(lnprice_4_nights ~ prop_type_simplified+room_type+number_of_reviews+review_scores_rating, data = vienna_train)
+msummary(model2)
+car::vif(model2)
+autoplot(model2) +
+  theme_minimal() + 
+  labs (title = "Model 2 Diagnostic Plots")
+```
+Adjusted R squared is 0.2542, which is a marginal improvement on the previous model at the cost of three extra sources of estimation error, which will increase the variance of our predicted means.
+
+We also get very high variance inflation factors for property type and room type, understandable. Given that the room type variable only very marginally improved the model's explanatory value, and introduces quite a bit of collinearity amongst the regressors, we decide to drop either the room_type or property_type variable. However, given that the task at hand is to predict the price of a private room, we are forced to drop the prop_type_simplified variable.
+
+## Model 3
+We want to test if the number of `bathrooms`, `bedrooms`, `beds`, or size of the house (`accomodates`) are significant predictors of `price_4_nights`. However, we suspect a high degree of multicollinearity betwen these variables, so we make a correlation matrix between these variables to determine if there is a high corelation between the predictors, and which one demonstrates the strongest relationship with the target variable.
+
+```{r}
+vienna_train %>% 
+  select(lnprice_4_nights, bathrooms, bedrooms, accommodates, beds) %>% 
+  ggpairs()+
+  labs(title = "Correlation Matrix") 
+```
+There is a high degree of correlation between the predictors, and accommodates demonstrates the strongest relationship with the target variable. This makes sense, seeing as accommodates is determined by the number of beds and bedrooms in a property. Thus, we decide to only add in the Accommodates`variable`into our model. 
+
+Bathrooms demonstrates a weak correlation with accommodates, and logically you would expect an accommodation with more bathrooms to cost more per person, when we control for the accommodates factor.
+
+
+```{r}
+model3 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
+             +accommodates+bathrooms, data = vienna_train)
+msummary(model3)
+car::vif(model3)
+autoplot(model3) +
+  theme_minimal() + 
+  labs (title = "Model 3 Diagnostic Plots")
+```
+Adjusted R-squared is 0.3743, greatly improved by factoring in size of the house (`accomodates`) and bathrooms, both of which are statistically significant (5%).
+
+Note the low multicollinearity amongst the regressors.
+
+
+## Model 4
+We now want to test if superhosts `(host_is_superhost`) command a pricing premium, after controlling for other variables.
+```{r}
+model4 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating
+             +accommodates+bathrooms+host_is_superhost, data = vienna_train)
+msummary(model4)
+car::vif(model4)
+autoplot(model4) +
+  theme_minimal() + 
+  labs (title = "Model 4 Diagnostic Plots")
+```
+Adjusted R-squared is 0.38, a barely improved by adding `(host_is_superhost`). However, this regressor is statistically significant, and positive as expected. We decide to continue with the variable however as it is extremely significant, and wait until we factor in some additional regressors.
+
+Note that the lm() function automatically discards rows with missing values for the explanatory variables. We were reluctant to remove these rows earlier, as we did not know if these variables would be statistically significant predictors of the target variable,; and thus, we may have discarded valuable data unnecessarily if they were not useful.
+
+## Model 5
+Some hosts allow you to immediately book their listing (`instant_bookable == TRUE`), while a non-trivial proportion don't. After controlling for other variables, is `instant_bookable` a significant predictor of `price_4_nights`?
+```{r}
+model5 <- lm(lnprice_4_nights ~ room_type+number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost+instant_bookable, data = vienna_train)
+msummary(model5)
+car::vif(model5)
+autoplot(model5) +
+  theme_minimal() + 
+  labs (title = "Model 5 Diagnostic Plots")
+```
+The adjusted R squared is unchanged from Model 4, and we have an insignificant predictor in `instant_bookable` so we discard this variable going forward.
+
+## Model 6
+We now test the predictive ability of the neighbourhood_simplified variable. 
+```{r}
+model6 <- lm(lnprice_4_nights ~ room_type+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
+msummary(model6)
+car::vif(model6)
+autoplot(model6) +
+  theme_minimal() + 
+  labs (title = "Model 6 Diagnostic Plots")
+```
+The introduction of the neighbourhood_simplified variable improves the adjusted R squared greatly to 0.48. Each bucket we computed is a statistically siginificant dummy variable at the 5% level of significance. However, we lose 362 additional observations. We decide that it is worth the loss in data as we still have a sufficient degrees of freedom to avoid overfitting.
+
+The inclusion of the neighbourhood variable however results in the "Entire home/apt" category of the `room_type`variable to become statistically insignificant i.e. the mean of the target variable is not statistically significantly different for an entire home/apartment than the baseline room_type in the model (Hotel room) when controlling for other variables. So we should group this category into the baseline category based on this. There must exist a relationship between the neighbourhoods and the room_type variable.
+
+
+```{r}
+# First we need to summarize the specified room_type category into the baseline for training and testing dataset, then we re-factorise them
+
+vienna_train <- vienna_train %>%
+  mutate(room_types = case_when(
+    room_type %in% c("Hotel room", "Entire home/apt") ~ "Entire property", 
+    room_type %in% c("Private room") ~ "Private room",
+    room_type %in% c("Shared room") ~ "Shared room"
+  ))
+
+# Now we need to factorise the new variable
+vienna_train <- vienna_train %>% 
+  mutate(
+     room_types = fct_relevel(room_types,
+                                 "Entire property",
+                                 "Private room",
+                                 "Shared room"))
+
+vienna_test <- vienna_test %>%
+  mutate(room_types = case_when(
+    room_type %in% c("Hotel room", "Entire home/apt") ~ "Entire property", 
+    room_type %in% c("Private room") ~ "Private room",
+    room_type %in% c("Shared room") ~ "Shared room"
+  ))
+
+# Now we need to factorise the new variable
+vienna_test <- vienna_test %>% 
+  mutate(
+     room_types = fct_relevel(room_types,
+                                 "Entire property",
+                                 "Private room",
+                                 "Shared room"))
+```
+
+Now we fit model 6 again with the new room_type grouping.
+
+```{r}
+model6 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+ number_of_reviews+review_scores_rating+accommodates+bathrooms+host_is_superhost, data = vienna_train)
+msummary(model6)
+car::vif(model6)
+autoplot(model6) +
+  theme_minimal() + 
+  labs (title = "Model 6 Diagnostic Plots")
+```
+All of our coefficients on the regressors are now statistically significant. The standard error on the Entire home/apt category coefficient was very large, due to a lack of data.
+
+## Model 7
+We now want to select which of the review number variables we should use. We look at the correlation matrix between number_of_reviews, reviews_per_month, number_of_reviews_ltm.  
+```{r}
+vienna_train %>% 
+  select(lnprice_4_nights, number_of_reviews, reviews_per_month, number_of_reviews_ltm) %>% 
+  ggpairs()+
+  labs(title = "Correlation Matrix")
+```
+The number of reviews over the last twelve months is a more current variable than the number of reviews, and demonstrates a stronger correlation with the target variable. We would only like to use one of these variables at most due to the high collinearity, and because we want to minimise out-of-sample variance of our mean forecasts. However, the explanatory values of these variables is pretty poor. We tested Model 6 with the number_of_reviews_ltm variable, but it only increased the adjusted R squared by less than 0.01. When we removed the number_of_reviews variable also, the explanatory value barely changed, so we discard this variable. It is surprising that the number of reviews has approximately no relationship with the target variable. 
+
+We decide to drop this class of variables from the model.
+
+We now test the effect of `avalability_30` after controlling for other variables.
+```{r}
+model7 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30, data = vienna_train)
+msummary(model7)
+car::vif(model7)
+autoplot(model7) +
+  theme_minimal() + 
+  labs (title = "Model 7 Diagnostic Plots")
+```
+Availability_30 is statistically significant at the 5% level of significance. It also increases our model's explanatory value by over 0.04, which is a welcome boost. Multicollinearity is relatively low in this model as well which gives us confidence in the independence of our explanatory variables.
+
+If availability_30 increases by 1, we would expect, based on the model, that price for two people for four nights would increase by c. 1% on average. This variable is statistically significant at the 5% level of significance.
+
+After running the specified regressions, we must look at the remaining variables we have not used so far to potentially optimise our models explanatory value further.
+
+```{r,render=lemon_print}
+vienna_train %>% 
+  select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price,room_types))
+
+```
+
+ 
+Relevant variables not tested yet:
+ - host_identity_verified
+ - host_total_listings_count
+ - host_acceptance_rate (too many missing values)
+ - host_response_rate (too many missing values)
+
+## Model 8
+We decide to test the host_identity_verified Boolean variable, as we would expect that people could potentially pay a premium for the security of the booking. However, the host may not demand a premium for being verified, since it is strictly the seller which determines market price here.
+```{r}
+model8 <- lm(lnprice_4_nights ~ room_types+neighbourhood_simplified+review_scores_rating+accommodates+bathrooms+host_is_superhost+availability_30+host_identity_verified, data = vienna_train)
+msummary(model8)
+car::vif(model8)
+autoplot(model8) +
+  theme_minimal() + 
+  labs (title = "Model 8 Diagnostic Plots")
+```
+The host identity verification variable is not statistically significant at the 5% level of significance, so we discard it. We can say so far that Model 7 is the best in terms of adjusted r squared.
+
+```{r,render=lemon_print}
+models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7,model8,
+                 statistics = c('#observations' = 'nobs', 
+                                'R squared' = 'r.squared', 
+                                'Adj. R Squared' = 'adj.r.squared', 
+                                'Residual SE' = 'sigma',
+                                'AIC' = 'AIC'), 
+                 bold_signif = 0.05, 
+                 stars = NULL
+) %>% 
+  set_caption('Comparison of models')
+kable(models_compare)
+
+# Get list of adjusted R squared values
+ar2_comparison = data.frame(summary(model1)$adj.r.squared,summary(model2)$adj.r.squared,summary(model3)$adj.r.squared,summary(model4)$adj.r.squared,summary(model5)$adj.r.squared,summary(model6)$adj.r.squared,summary(model7)$adj.r.squared,summary(model8)$adj.r.squared)
+```
+
+
+```{r,render=lemon_print}
+# Get out of sample RMSE
+RMSE1 = 100*sd((predict(model1, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE2 = 100*sd((predict(model2, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE3 = 100*sd((predict(model3, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE4 = 100*sd((predict(model4, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE5 = 100*sd((predict(model5, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE6 = 100*sd((predict(model6, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE7 = 100*sd((predict(model7, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+RMSE8 = 100*sd((predict(model8, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
+
+RMSE_compare = data.frame(RMSE1, RMSE2, RMSE3, RMSE4, RMSE5, RMSE6, RMSE7, RMSE8)
+
+kable(RMSE_compare)
+```
+Model 7 demonstrates the highest coefficient of determination, the lowest out-of-sample RMSE, and the lowest AIC amongst the models. Therefore, we decide to select this as our optimal model for the predictions. On average, this model should give us the most accurate predictions for average property price for the given input variables with the lowest standard errors.
+
+Its residuals are approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The qq plot is approximately along the 45 degree line also. It does not appear that we require heteroskedasticity robust standard errors.
+
+## Predictions
+
+Finally, we use our optimised model for predictions.
+
+## Prediction 1
+We first predict the price for a private room, with at least 10 reviews, and an average rating of at least 90 (4.5/5.0). We also assume that the property accommodates 2 people, has one bathroom, and has the average availability_30 in the entire cleaned dataset. We predict for each of the five neighbourhood buckets from most to least expensive We use the model to predict the total cost to stay at this Airbnb for 4 nights.  
+```{r, render=lemon_print}
+imaginary_stay1 <- data_frame(room_types="Private room",
+                              neighbourhood_simplified = c("Innere Stadt","T2", "T3", "T4", "T5"), # vary at will
+                              review_scores_rating = 4.5:5,
+                              accommodates=2,
+                              bathrooms=1,
+                              host_is_superhost=TRUE,
+                              availability_30=mean(vienna_listings_reg$availability_30))
+
+pred1=data.frame(exp(predict.lm(model7, imaginary_stay1,  interval = "confidence")), row.names = c("Innere Stadt","T2", "T3", "T4", "T5"))
+kable(pred1)
+```
+The table above gives the 95% confidence interval and expectation of the price for two people to stay for four nights with the other crieria mentioned for each of the simplified neighbourhood buckets. This demonstrates the significant difference between the neighbourhoods, with Innere Stadt the obvious positive outlier in terms of price. This table gives the user the location/price trade-off of staying in a nicer or potentially better located area, with the given assumptions above.
+
+```{r, fig.width=10, fig.height=4}
+#plotting graph using geom_errorbar
+difference_pred1<- pred1 %>% 
+  ggplot(aes(color=row.names(pred1))) +
+  geom_errorbar(aes(y=row.names(pred1),xmin=lwr,xmax= upr),width=0.1,size=1.5,show.legend = FALSE) +
+  geom_point(aes(x=fit,y=row.names(pred1)),size=5,show.legend = FALSE)+
+  geom_text(aes(label=round(lwr,digits=2),x=round(lwr,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.5,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  geom_text(aes(label=round(upr,digits=2),x=round(upr,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.5,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  geom_text(aes(label=round(fit,digits=2),,x=round(fit,digits=2),y=row.names(pred1)),size=3,color="black",hjust=0.4,vjust=-0.75,nudge_x=0.01,nudge_y=0.08,fontface = "bold")+
+  theme(legend.position="none",legend.title = element_blank())+
+  labs(
+    title = "Prediction by Neighbourhood",
+    subtitle = "95% Confidence Intervals",
+    x = "Prediction Price for Two People for Four Nights",
+    y = "Neighbourhoods"
+    )+
+  theme_economist()+
+  NULL
+
+difference_pred1
+```
+Note that the 95% confidence intervals for the predictions for T5 and T4 overlap, as do T3 and T2. However, they are statistically significant predictors so we are not alarmed. 
+
+
+# Deliverables
+
+
+- By midnight on Monday 17 Oct 2022, you must upload on Canvas a short presentation (max 4-5 slides) with your findings, as some groups will be asked to present in class. You should present your Exploratory Data Analysis, as well as your best model. In addition, you must upload on Canvas your final report, written  using R Markdown to introduce, frame, and describe your story and findings. You should include the following in the memo:
+
+1. Executive Summary: Based on your best model, indicate the factors that influence `price_4_nights`.
+This should be written for an intelligent but non-technical audience. All
+other sections can include technical writing.
+2. Data Exploration and Feature Selection: Present key elements of the data, including tables and
+graphs that help the reader understand the important variables in the dataset. Describe how the
+data was cleaned and prepared, including feature selection, transformations, interactions, and
+other approaches you considered.
+3. Model Selection and Validation: Describe the model fitting and validation process used. State
+the model you selected and why they are preferable to other choices.
+4. Findings and Recommendations: Interpret the results of the selected model and discuss
+additional steps that might improve the analysis
+  
+  
+
+Remember to follow R Markdown etiquette rules and style; don't have the Rmd output extraneous messages or warnings, include summary tables in nice tables (use `kableExtra`), and remove any placeholder texts from past Rmd templates; in other words, (i.e. I don't want to see stuff I wrote in your final report.)
+  
+  
+# Rubric
+
+Your work will be assessed on a rubric which you can find here
+
+
+```{r rubric, echo=FALSE, out.width="100%"}
+knitr::include_graphics(here::here("images", "rubric.png"), error = FALSE)
+```
+
+
+# Acknowledgements
+
+- The data for this project is from [insideairbnb.com](insideairbnb.com)
