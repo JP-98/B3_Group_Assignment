@@ -711,7 +711,8 @@ msummary(model6)
 car::vif(model6)
 autoplot(model6) +
   theme_minimal() + 
-  labs (title = "Model 6 Diagnostic Plots")
+  labs (title = "Model 6 Diagnostic Plots")+
+  theme(text = element_text(size=5))
 ```
 All of our coefficients on the regressors are now statistically significant. The standard error on the Entire home/apt category coefficient was very large, due to a lack of data.
 
@@ -734,7 +735,8 @@ msummary(model7)
 car::vif(model7)
 autoplot(model7) +
   theme_minimal() + 
-  labs (title = "Model 7 Diagnostic Plots")
+  labs (title = "Model 7 Diagnostic Plots")+
+  theme(text = element_text(size=6))
 ```
 Availability_30 is statistically significant at the 5% level of significance. It also increases our model's explanatory value by over 0.04, which is a welcome boost. Multicollinearity is relatively low in this model as well which gives us confidence in the independence of our explanatory variables.
 

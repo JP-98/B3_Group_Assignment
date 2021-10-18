@@ -1,6 +1,6 @@
 ---
-title: "Final Group Project: AirBnB analytics"
-date: "12 Oct 2021"
+title: "Final Group Project: AirBnB analytics - Raw Code"
+date: "18 Oct 2021"
 author: "Reading Time: About 8 minutes"
 output:
   html_document:
@@ -71,9 +71,6 @@ vienna_listings <- vienna_listings %>%
 unique_listings = unique(listings[,])
 ```
 
-
-Following is an explanation of some of the variables in our data set:
-
 - `price` = cost per night 
 - `property_type`: type of accommodation (House, Apartment, etc.)
 - `room_type`:
@@ -87,12 +84,9 @@ Following is an explanation of some of the variables in our data set:
 - `longitude` , `latitude`: geographical coordinates to help us locate the listing
 - `neighbourhood*`: three variables on a few major neighbourhoods in each city 
 
-
 # Mapping 
 
-Visualisations of feature distributions and their relations are key to understanding a data set, and they can open up new lines of exploration. For this visualisation we use the `leaflet` package, which includes a variety of tools for interactive maps.
-
-The following code, having downloaded a dataframe `listings` with all AirbnB listings in Milan, will plot on the map all AirBnBs where `minimum_nights` is less than equal to four (4). 
+The following code, having downloaded a dataframe `listings` with all AirbnB listings in Vienna, will plot on the map all AirBnBs where `minimum_nights` is less than equal to four (4). 
 
 ```{r, out.width = '80%'}
 
@@ -111,7 +105,7 @@ Using this map, we can be redirected to any airbnb we want to check out along wi
     
 # Exploratory Data Analysis (EDA)
 
-We then conduct a thorough EDA. Recall that an EDA involves three things:
+We then conduct a thorough EDA via three methods:
 
 * Looking at the raw values.
     * `dplyr::glimpse()`
@@ -136,17 +130,17 @@ kable(dplyr::glimpse(vienna_listings))
 Our data has 11583 rows/observations with 74 variables. 
 
 ### Skim data
-```{r}
+```{r, warning=FALSE,error=FALSE}
 # Generate summary statistics with mosaic and skimr packages
 kable(skimr::skim(vienna_listings))
 ```
-There are 37 numeric variables, 9 logical, 5 date and 3 character variables. 
+There are 37 independent numeric variables, 9 logical, 5 date and 22 character variables. 
 
 ## Select meaningful variables based on logic
 
 Since there are 73 independent variables and many of them don't make any sense (eg. url) for price prediction, we select some variables for simplifying later exploration. 
 
-Accoridng to our hypothesis, the following variables will potentially affect the price. 
+According to our hypothesis, the following variables will potentially affect the price. 
 
 ```{r}
 # Logical screening
@@ -187,7 +181,7 @@ kable(skimr::skim(vienna_listings_cleaned))
 
 ### Analysis on Price
 
-Then, we plot the distribution of pirce. As the distribution is significantly right skewed, we therefore use log function to restructure the price data.
+Then, we plot the distribution of pirce. As the distribution is significantly right skewed, we use the log function to aptly transform the price data.
 
 ```{r}
 # Visualise the Price
