@@ -1,7 +1,7 @@
 ---
 title: "Group B3: AirBnB analytics - Raw Code"
 date: "18 Oct 2021"
-author: "Reading Time: About 8 minutes"
+author: "Study group 3 // Ismail Rihai, John Purcell, Parthivi Bansal, Ivo Margetich, Xinyi Liu, Xinyue Zhang, Jacopo Lorusso Caputi"
 output:
   html_document:
     highlight: zenburn
@@ -74,6 +74,7 @@ This analysis is very approachable for the average person given the obvious logi
   - Superhost: a Boolean variable which is True if the host is a superhost. The positive relationship here makes sense as you would expect travelers to pay a premium on average to stay with a Super Host. This variable is unique to the AirBnB platform.
   - Availability_30: how many days the room is available in the next 30 days. This variable is an extremely useful gauge of current demand for the property. Logically, we would expect demand to be conditional on price as opposed to the structure above, but there appears to be some simultaneity between the two variables.
 
+
 # Source the Data
 
 ## Load the Data
@@ -113,6 +114,7 @@ leaflet(data = filter(vienna_listings, minimum_nights <= 4)) %>%
 ```
 
 > Using this map, we can be redirected to any airbnb we want to check out along with an overview of their location. We know move on to exploratory analysis.
+
 
 # 2. Data Exploration and Feature Selection #
 Sidebar{.sidebar data-width=230}
@@ -235,6 +237,7 @@ vienna_listings_final <- vienna_listings_cleaned
 
 > Now the natural log of price is approximatley normally distributed within these bounds; thus, we use lnprice as our dependent variable to construct our model.
 
+
 ## Transform to Numerical: Bathrooms, host_response_rate, host_acceptance_rate
 
 > We then change the non-numerical variables such as bathrooms, host_response_rate, and host_acceptance_rate to numerical variables.
@@ -287,6 +290,7 @@ Numeric Variables * 19: host_total_listings_count, host_response_rate, host_acce
 Logical/Boolean Variables * 3 : host_is_superhost, host_identity_verified, instant_bookable
 Character variables * 4 : host_response_time, neighbourhood_cleansed, property_type, room_type
 
+
 ## Property Types
 
 > Next, we look at the variable `property_type`. We use the `count` function to determine how many categories there are their frequency. The top 4 most common property types are "Entire rental unit", "Private room in rental unit", " Entire condominium (condo)", and "Entire serviced apartment". The four types account for 91.19% proportion of the total listings.
@@ -309,7 +313,7 @@ Top 4:
 
 Since the vast majority of the observations in the data are one of the top two property types (84%), we would like to combine Entire condominium (condo), Entire serviced apartment and Entire loft as a type called Entire apartment. This method was better suited to the Vienna dataset, we require sufficient datapoints for each category in order to reduce our model's standard errors.
 
-> We then create a simplified version of `property_type` variable that has 4 categories: the top two categories, Entire apartment and Other.
+> We then create a simplified version of property_type variable that has 4 categories: the top two categories, Entire apartment and Other.
 
 ```{r}
 # First we need to summarize the other values in the Category "Others"
@@ -329,7 +333,7 @@ kable(vienna_listings_final %>%
   arrange(desc(n)))        
 ```  
 
-> Next we can make a factor out of prop_type_simplified, remove original column   
+> Next we can make a factor out of prop_type_simplified, remove original column.   
 
 ```{r}
 vienna_listings_final <- vienna_listings_final %>% 
@@ -363,9 +367,9 @@ vienna_listings_final %>%
   
 ```
 
-- The most common values for the variable `minimum_nights` is 1,2,3.
+- The most common values for the variable minimum_nights is 1,2,3.
 - 1 minimum night stands out among the common values.
-- The seemingly unusual large values for `minimum_nights` probably represent listings for long-term tenants, not for travelers.
+- The seemingly unusual large values for minimum_nights probably represent listings for long-term tenants, not for travelers.
 
 > Filter the airbnb data so that it only includes observations with minimum_nights <= 4
 
@@ -495,6 +499,7 @@ vienna_listings_final <- vienna_listings_final %>%
   select(-c(longitude,latitude))
 ```
 
+
 ## Target Variable.
 
 > For the target variable $Y$, we will use the cost for two people to stay at an Airbnb location for four nights. We will create a new variable called `price_4_nights` that uses `price`, and `accomodates` to calculate the total cost for two people to stay at the Airbnb property for 4 nights. This is the variable $Y$ we want to explain.
@@ -536,6 +541,7 @@ vienna_listings_reg <- vienna_listings_reg %>%
 
 
 ## Split the Dataset into Training and Testing
+
 ```{r Sampling}
 # Set seed so we will get the same results
 set.seed(202110)
@@ -545,6 +551,7 @@ train_test_split <- initial_split(vienna_listings_reg, prop=0.75)
 vienna_train <- training(train_test_split)
 vienna_test <- testing(train_test_split)
 ```
+
 
 # 3. Model Selection and Validation #
 Sidebar{.sidebar data-width=230}
@@ -565,6 +572,7 @@ vienna_train %>%
   theme_economist()
 ```
 
+
 ## Summary of correlations between variables:
 
 This correlogram gives us a better indication of which variables may explain more of the target variable, which we will use to gear our forward regression in the right direction.
@@ -572,6 +580,7 @@ This correlogram gives us a better indication of which variables may explain mor
 We can also see there are many variables which have a strong correlation with each other, eg. beds and accommodates. This means we need to consider multicollinearity in the regression amongst the predictors. 
 
 However, some scatterplots cannot support a linear relationship between variables, eg. price and total listings of the host. There could be some correlations  conditional on the value of a categorical variable also which we need to be careful of, eg. the correlation between price and bedrooms could be conditional on property type or room type, since whether the listing is entire or a private room for rental might influence the number of bedrooms. For this reason we simply use the correlogram as a limited source of guidance to help us start off in the right direction
+
 
 ## Model 1
 
@@ -789,6 +798,7 @@ Relevant variables not tested yet:
  - host_acceptance_rate (too many missing values)
  - host_response_rate (too many missing values)
 
+
 ## Model 8
 
 We decide to test the host_identity_verified Boolean variable, as we can logically hypothesise that people could potentially pay a premium for the security of the booking. However, the host may not demand a premium for being verified, since it is strictly the seller which determines market price here.
@@ -856,9 +866,11 @@ Model 7's residuals appear to be randomly scattered around its mean of 0, and lo
 
 Therefore, we decide to select model 7 as our optimal model for the price for two people to stay for four nights in Vienna. On average, this model should give us the most accurate predictions for average property rental price for the given input variables with the lowest standard errors amongst the fitted models.
 
+
 # 4. Findings and Recommendations #
 Sidebar{.sidebar data-width=230}
 =====================================
+
 
 # Model Interpretation
 
@@ -892,6 +904,7 @@ Logic: location is one of the primary considerations for travelers staying in Vi
 
 Logic: overpriced accommodation is likely to be a deterrent of demand
   
+
 ## Prediction
 
 > We first predict the price for a private room, with at least 10 reviews, and an average rating of at least 90 (4.5/5.0). We also assume that the property accommodates 2 people, has one bathroom, and has the average availability_30 in the entire cleaned dataset. We predict for each of the five neighbourhood buckets from most to least expensive We use the model to predict the total cost to stay at this Airbnb for 4 nights.  
@@ -934,6 +947,7 @@ difference_pred1
 ```
 
 > Note that the 95% confidence intervals for the predictions for T5 and T4 overlap, as do T3 and T2. However, they are statistically significant predictors so we are not alarmed. 
+
 
 ## Potential Improvements
 
