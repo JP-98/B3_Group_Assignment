@@ -55,7 +55,7 @@ knit_print.data.frame <- lemon_print
 
 This coursework focuses on applying a multivariate linear regression model to predict the total cost for two people staying 4 nights in an Airbnb in Austria. The data set is large and complex (non-numerical values, variables with several NA values...), so we are careful and conservative with the steps taken. In the exploratory analysis section, we first start by analysing the data to identify correlations and relationships. We also make sure to tidy up the data by adjusting the relevant variables. This analysis is further illustrated by some visualisations, which will allow us to make assumptions for our regression analysis. The next step consists of applying backward stepwise regression: We start with the full linear regression model and sequentially delete the predictor that has least input on the fit. We stop when all variables are statistically significant at the 5%. The methodology has been well-researched, so our contribution is largely empirical. We discover that the price estimates are on mostly in-line with our conjectures (neighbourhood, ratings...). The analysis has been performed in R.
 
-
+We first load the data and parse the price into an integer:
 ```{r load_data, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
 # use cache=TRUE so you dont download the data everytime you knit
 vienna_listings <- vroom("http://data.insideairbnb.com/austria/vienna/vienna/2021-09-12/data/listings.csv.gz") %>%
@@ -72,7 +72,7 @@ unique_listings = unique(listings[,])
 ```
 
 
-Even though there are many variables in the dataframe, here is a quick description of some of the variables collected, and you can find a [data dictionary here](https://docs.google.com/spreadsheets/d/1iWCNJcSutYqpULSQHlNyGInUvHg2BoUGoNRIGa6Szc4/edit#gid=982310896)
+Following is an explanation of some of the variables in our data set:
 
 - `price` = cost per night 
 - `property_type`: type of accommodation (House, Apartment, etc.)
@@ -90,10 +90,9 @@ Even though there are many variables in the dataframe, here is a quick descripti
 
 # Mapping 
 
-Visualisations of feature distributions and their relations are key to understanding a data set, and they can open up new lines of exploration. While we do not have time to go into all the wonderful geospatial visualisations one can do with R, you can use the following code to start with a map of your city, and overlay all AirBnB coordinates to get an overview of the spatial distribution of AirBnB rentals. For this visualisation we use the `leaflet` package, which includes a variety of tools for interactive maps, so you can easily zoom in-out, click on a point to get the actual AirBnB listing for that specific point, etc.
+Visualisations of feature distributions and their relations are key to understanding a data set, and they can open up new lines of exploration. For this visualisation we use the `leaflet` package, which includes a variety of tools for interactive maps.
 
-The following code, having downloaded a dataframe `listings` with all AirbnB listings in Milan, will plot on the map all AirBnBs where `minimum_nights` is less than equal to four (4). You could learn more about `leaflet`, by following [the relevant Datacamp course on mapping with leaflet](https://www.datacamp.com/courses/interactive-maps-with-leaflet-in-r)
-
+The following code, having downloaded a dataframe `listings` with all AirbnB listings in Milan, will plot on the map all AirBnBs where `minimum_nights` is less than equal to four (4). 
 
 ```{r, out.width = '80%'}
 
@@ -107,17 +106,12 @@ leaflet(data = filter(vienna_listings, minimum_nights <= 4)) %>%
                    popup = ~listing_url,
                    label = ~property_type)
 ```
-
+Using this map, we can be redirected to any airbnb we want to check out along with an overview of their location. We know move on to exploratory analysis.
     
     
 # Exploratory Data Analysis (EDA)
 
-In the [R4DS Exploratory Data Analysis chapter](http://r4ds.had.co.nz/exploratory-data-analysis.html){target="_blank"}, the authors state:
-
-> "Your goal during EDA is to develop an understanding of your data. The easiest way to do this is to use questions as tools to guide your investigation... EDA is fundamentally a creative process. And like most creative processes, the key to asking quality questions is to generate a large quantity of questions."
-
-
-Conduct a thorough EDA. Recall that an EDA involves three things:
+We then conduct a thorough EDA. Recall that an EDA involves three things:
 
 * Looking at the raw values.
     * `dplyr::glimpse()`
@@ -139,17 +133,21 @@ Conduct a thorough EDA. Recall that an EDA involves three things:
 # Use Glimpse from the Dplyr package to get an initial look at the raw data
 kable(dplyr::glimpse(vienna_listings))
 ```
+Our data has 11583 rows/observations with 74 variables. 
 
 ### Skim data
 ```{r}
 # Generate summary statistics with mosaic and skimr packages
 kable(skimr::skim(vienna_listings))
 ```
-
+There are 37 numeric variables, 9 logical, 5 date and 3 character variables. 
 
 ## Select meaningful variables based on logic
 
 Since there are 73 independent variables and many of them don't make any sense (eg. url) for price prediction, we select some variables for simplifying later exploration. 
+
+Accoridng to our hypothesis, the following variables will potentially affect the price. 
+
 ```{r}
 # Logical screening
 
@@ -189,6 +187,8 @@ kable(skimr::skim(vienna_listings_cleaned))
 
 ### Analysis on Price
 
+Then, we plot the distribution of pirce. As the distribution is significantly right skewed, we therefore use log function to restructure the price data.
+
 ```{r}
 # Visualise the Price
 vienna_listings_cleaned %>% ggplot(aes(x=price)) + 
@@ -209,8 +209,7 @@ vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) +
 ```{r}
 confint(vienna_listings_cleaned$price, mean, level = 0.9)
 ```
-
-This gives us approximate price upper and lower bounds of €20 and €169 respectively.
+As the log price is still a bit right skewed, we then plot the 5% and 95% percentile of the price. This gives us approximate price upper and lower bounds of €20 and €169 respectively. After we filter the date outside of this bondary, we then plot the lnprice as below.
 
 ```{r,out.width="100%"}
 # Remove positive outliers and non-sensical/irrelevant values left of the mean to build a more meaningful analsysis
@@ -227,9 +226,13 @@ vienna_listings_cleaned %>% ggplot(aes(x=lnprice)) +
 # save this dataset
 vienna_listings_final <- vienna_listings_cleaned
 ```
+Now the logged price seems normally distributed, and we use lnprice as our dependent variable to construct our model.
 
 
 ### Non-numerical to numerical: Bathrooms, host_response_rate, host_acceptance_rate
+
+We then change the non-numerical variables such as bathrooms, host_response_rate, and host_acceptance_rate to numericals.
+
 ```{r,warning = FALSE,message = FALSE}
 vienna_listings_final <- vienna_listings_final%>%
   mutate(bathrooms = parse_number(bathrooms_text),
@@ -284,7 +287,8 @@ invisible(vienna_listings_final$room_type <- factor(vienna_listings_final$room_t
 
 ## Propery types
 
-Next, we look at the variable `property_type`. We can use the `count` function to determine how many categories there are their frequency. What are the top 4 most common property types? What proportion of the total listings do they make up? 
+Next, we look at the variable `property_type`. We use the `count` function to determine how many categories there are their frequency. The top 4 most common property types are "Entire rental unit", "Private rom in rental unit", " Entire condominium (condo)", and "Entire serviced apartment". The four types account for 91.19% proportion of the total listings.
+
 
 ```{r}
 # Identify the amount of each property type
@@ -802,7 +806,7 @@ kable(RMSE_compare)
 ```
 Model 7 demonstrates the highest coefficient of determination, the lowest out-of-sample RMSE, and the lowest AIC amongst the models. Therefore, we decide to select this as our optimal model for the predictions. On average, this model should give us the most accurate predictions for average property price for the given input variables with the lowest standard errors.
 
-Its residuals are approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The qq plot is approximately along the 45 degree line also. It does not appear that we require heteroskedasticity robust standard errors.
+Its residuals all randomly scatter around its mean of 0, and are approximately normal as they appear to simulate a white noise distribution with no clear pattern as the target variable varies. The QQ plot is approximately along the 45 degree line also, with most residual points well fitted. It does not appear that we require heteroskedasticity robust standard errors.
 
 ## Predictions
 
