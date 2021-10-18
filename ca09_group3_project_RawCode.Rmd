@@ -93,7 +93,7 @@ vienna_listings <- vienna_listings %>%
   mutate(price = parse_number(price))
 
 # In case of duplicate rows
-unique_listings = unique(listings[,])
+unique_listings = unique(vienna_listings[,])
 ```
 
 # Mapping 
@@ -143,9 +143,9 @@ kable(dplyr::glimpse(vienna_listings))
 
 ### Skim Data
 
-```{r, warning=FALSE,error=FALSE}
+```{r, warning=FALSE,error=FALSE, eval=FALSE}
 # Generate summary statistics with mosaic and skimr packages
-skimr::skim(vienna_listings)
+kable(skimr::skim(vienna_listings))
 ```
 > There are 37 independent numeric variables, 9 logical, 5 date and 22 character variables. 
 
@@ -250,7 +250,7 @@ vienna_listings_final <- vienna_listings_final%>%
   select(-bathrooms_text)
 ```
 
-```{r}
+```{r, eval=FALSE}
 #glimpse and skim again
 kable(glimpse(vienna_listings_final))
 kable(skim(vienna_listings_final))
@@ -441,7 +441,7 @@ Neighbourhoods located less than 6 km to city center offer listings for price in
 
 Interestingly, listings located more than 9km away have higher price for 60-70. There appears to be no certain pattern/relationship between distance from the center and price, but we will investigate further later.
 
-```{r,render=lemon_print, warning=FALSE, message=FALSE,error=FALSE}
+```{r, warning=FALSE, message=FALSE,error=FALSE}
 # Grouping by neighbourhood_cleansed
 neighbourhood_sorted = vienna_listings_final %>% 
  group_by(neighbourhood_cleansed) %>% 
@@ -786,7 +786,7 @@ autoplot(model7) +
 
  - After running the specified regressions, we must look at the remaining variables we have not used so far to potentially optimise our models explanatory value further.
 
-```{r,render=lemon_print}
+```{r}
 kable(vienna_train %>% 
   select(-c(lnprice_4_nights,prop_type_simplified,neighbourhood_simplified,review_scores_rating,accommodates,host_is_superhost,availability_30,number_of_reviews, reviews_per_month, number_of_reviews_ltm,instant_bookable,bathrooms, bedrooms, beds,room_type, minimum_nights, maximum_nights, lnprice, dist_from_cent, price_4_nights, availability_365,price,room_types)))
 
@@ -816,7 +816,7 @@ autoplot(model8) +
  
  - We have now exhausted our supply of explanatory variables. We can say so far that Model 7 is the best in terms of adjusted R squared so far, but we will compare the models further below using AIC, residual standard error, and out-of-sample RMSE after. We will then perform diagnostics tests on the residuals, as if the distribution of the residuals violates our OLS assumptions, we must re-select the models, or perform heteroskedasticity and autocorrelation robust regressions.
 
-```{r,render=lemon_print}
+```{r}
 models_compare <- huxreg(model1, model2, model3, model4, model5, model6, model7,model8,
                  statistics = c('#observations' = 'nobs', 
                                 'R squared' = 'r.squared', 
@@ -834,7 +834,7 @@ ar2_comparison = data.frame(summary(model1)$adj.r.squared,summary(model2)$adj.r.
 ```
 
 
-```{r,render=lemon_print}
+```{r}
 # Get out of sample RMSE
 RMSE1 = 100*sd((predict(model1, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
 RMSE2 = 100*sd((predict(model2, vienna_test)-vienna_test$lnprice_4_nights),na.rm=TRUE)
@@ -909,7 +909,7 @@ Logic: overpriced accommodation is likely to be a deterrent of demand
 
 > We first predict the price for a private room, with at least 10 reviews, and an average rating of at least 90 (4.5/5.0). We also assume that the property accommodates 2 people, has one bathroom, and has the average availability_30 in the entire cleaned dataset. We predict for each of the five neighbourhood buckets from most to least expensive We use the model to predict the total cost to stay at this Airbnb for 4 nights.  
 
-```{r, render=lemon_print,warning=FALSE}
+```{r,warning=FALSE}
 imaginary_stay1 <- data_frame(room_types="Private room",
                               neighbourhood_simplified = c("Innere Stadt","T2", "T3", "T4", "T5"), # vary at will
                               review_scores_rating = 4.5:5,
